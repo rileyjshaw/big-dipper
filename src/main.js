@@ -1,7 +1,4 @@
-import './style.css';
-import './dip-switch.css';
 import './dip-switch.js';
-import './dip-switch-group.css';
 import './dip-switch-group.js';
 import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
