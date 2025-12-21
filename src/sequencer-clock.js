@@ -1,8 +1,12 @@
 /**
  * High-precision sequencer clock with drift correction
  * BPM is determined by bits in the SET row:
- * - Bits 15-7: BPM base (1-256)
- * - Bits 1-0: fractional part (0, 0.25, 0.5, 0.75)
+ * - First byte (bits 15-8): Tempo value (0-255)
+ * - Second byte (bits 7-0):
+ *   - Bit 7 (MSB): Multiply/divide flag (0 = divide, 1 = multiply, defaults to divide when down)
+ *   - Bits 6-5: Tempo factor exponent (2 bits, 0-3, factor = 2^n)
+ *   - Bits 4-0: Unused
+ * BPM = (base tempo) times/divided by (2^n) / 4
  */
 export class SequencerClock {
 	constructor() {
@@ -15,20 +19,24 @@ export class SequencerClock {
 		this.startTime = 0;
 		this.expectedTickTime = 0;
 		this.tickCount = 0;
+		this.isFollowingExternal = false;
 	}
 
 	/**
-	 * Initialize the audio context (must be called after user interaction)
+	 * Extract tempo settings from the settings value
+	 * @param {number} settings - The settings value from the SET row (16 bits: first 2 switches × 8 bits)
+	 * @returns {{baseTempo: number, isMultiply: boolean, tempoFactorExponent: number}}
 	 */
-	async init() {
-		if (!this.audioContext) {
-			this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-		}
-		// Always resume context to ensure it's running
-		// This is safe to call even if already running
-		if (this.audioContext.state === 'suspended') {
-			await this.audioContext.resume();
-		}
+	extractTempoSettings(settings) {
+		const baseTempo = (settings >> 8) & 0xff;
+
+		const secondByte = settings & 0xff;
+
+		const isMultiply = ((secondByte >> 7) & 0b1) === 1;
+
+		const tempoFactorExponent = (secondByte >> 5) & 0b11;
+
+		return { baseTempo, isMultiply, tempoFactorExponent };
 	}
 
 	/**
@@ -37,14 +45,25 @@ export class SequencerClock {
 	 * @returns {number} The calculated BPM
 	 */
 	calculateBPM(settings) {
-		// Extract bits 15-7 for base BPM (8 bits)
-		const baseBPM = (settings >> (16 - 8)) & 0b111111111;
+		const { baseTempo, isMultiply, tempoFactorExponent } = this.extractTempoSettings(settings);
 
-		// Extract bits 1-0 for fractional part (last 2 bits)
-		const fractionalBits = (settings >> (16 - 10)) & 0b11;
-		const fractional = fractionalBits * 0.25;
+		const factor = Math.pow(2, tempoFactorExponent);
 
-		return baseBPM + fractional;
+		if (isMultiply) {
+			return (baseTempo * factor) / 4;
+		} else {
+			return baseTempo / (factor * 4);
+		}
+	}
+
+	/**
+	 * Calculate the maximum possible BPM for a given base tempo
+	 * This is used for broadcasting ticks at the maximum rate
+	 * @param {number} baseTempo - The base tempo value (0-255)
+	 * @returns {number} The maximum BPM (when multiply is on and exponent is 3, factor = 8)
+	 */
+	calculateMaxBPM(baseTempo) {
+		return baseTempo * 2;
 	}
 
 	/**
@@ -55,7 +74,6 @@ export class SequencerClock {
 	 */
 	calculateTickInterval(bpm) {
 		if (bpm <= 0) return 0;
-		// Each tick represents a sixteenth note (1/4 of a quarter note)
 		return ((60 / bpm) * 1000) / 4;
 	}
 
@@ -65,27 +83,22 @@ export class SequencerClock {
 	async start() {
 		if (this.isRunning) return;
 
-		// Don't start if BPM is 0
 		if (this.currentBPM <= 0) return;
 
-		await this.init();
-
-		// Ensure audio context is running
-		if (this.audioContext && this.audioContext.state === 'suspended') {
+		if (!this.audioContext) {
+			throw new Error('AudioContext not created - must be created in user gesture handler');
+		} else if (this.audioContext.state === 'suspended') {
 			await this.audioContext.resume();
 		}
 
 		this.isRunning = true;
 		this.tickCount = 0;
 
-		// Calculate tick interval in milliseconds
 		this.tickInterval = this.calculateTickInterval(this.currentBPM);
 
-		// Use performance.now() for high precision
 		this.startTime = performance.now();
 		this.expectedTickTime = this.startTime;
 
-		// Schedule first tick
 		this.scheduleNextTick();
 	}
 
@@ -107,10 +120,6 @@ export class SequencerClock {
 	setBPM(bpm) {
 		this.currentBPM = bpm;
 		this.tickInterval = this.calculateTickInterval(bpm);
-
-		// If already running, just update the interval
-		// The next scheduled tick will use the new interval naturally
-		// This preserves timing and prevents stuttering
 	}
 
 	/**
@@ -122,18 +131,14 @@ export class SequencerClock {
 		const now = performance.now();
 		const drift = now - this.expectedTickTime;
 
-		// Calculate next tick time, correcting for drift
-		// We subtract drift to keep the clock in sync
 		this.expectedTickTime += this.tickInterval;
 		const delay = Math.max(0, this.tickInterval - drift);
 
 		this.timeoutId = setTimeout(() => {
 			if (!this.isRunning) return;
 
-			// Emit the tick
 			this.emitTick();
 
-			// Schedule next tick
 			this.scheduleNextTick();
 		}, delay);
 	}
@@ -143,7 +148,6 @@ export class SequencerClock {
 	 */
 	emitTick() {
 		const now = this.audioContext ? this.audioContext.currentTime : performance.now() / 1000;
-		// Emit current tickCount (starts at 0 for first tick), then increment for next tick
 		this.listeners.forEach(listener => {
 			try {
 				listener(now, this.tickCount);
@@ -163,18 +167,42 @@ export class SequencerClock {
 	}
 
 	/**
-	 * Remove a tick listener
-	 * @param {Function} callback - Function to remove
+	 * Determine if a tick should be processed based on tempo factor filtering
+	 * @param {number} tickCount - The tick count from the external clock
+	 * @param {number} settings - The settings value to extract tempo settings from
+	 * @returns {boolean} Whether this tick should be processed
 	 */
-	offTick(callback) {
-		this.listeners.delete(callback);
+	shouldProcessTick(tickCount, settings) {
+		const { baseTempo, isMultiply, tempoFactorExponent } = this.extractTempoSettings(settings);
+
+		if (baseTempo === 0) return false;
+
+		const factor = Math.pow(2, tempoFactorExponent);
+		const maxFactor = 8;
+
+		const ratio = isMultiply ? factor / maxFactor : 1 / (maxFactor * factor);
+
+		if (ratio >= 1) return true;
+
+		const step = Math.round(1 / ratio);
+		return tickCount % step === 0;
 	}
 
 	/**
-	 * Get current BPM
-	 * @returns {number}
+	 * Calculate effective tick count based on tempo factor
+	 * @param {number} tickCount - The max-rate tick count
+	 * @param {number} settings - The settings value to extract tempo settings from
+	 * @returns {number} The effective tick count for this tempo factor
 	 */
-	getBPM() {
-		return this.currentBPM;
+	calculateEffectiveTickCount(tickCount, settings) {
+		const { isMultiply, tempoFactorExponent } = this.extractTempoSettings(settings);
+		const maxFactor = 8;
+		const factor = Math.pow(2, tempoFactorExponent);
+
+		if (isMultiply) {
+			return Math.floor((tickCount * factor) / maxFactor);
+		} else {
+			return Math.floor(tickCount / (maxFactor * factor));
+		}
 	}
 }

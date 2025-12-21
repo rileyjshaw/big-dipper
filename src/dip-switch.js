@@ -7,7 +7,6 @@ class DipSwitch extends HTMLElement {
 	}
 
 	connectedCallback() {
-		// Only initialize if not already initialized
 		if (this._fieldset) return;
 
 		this.innerHTML = `
@@ -32,7 +31,6 @@ class DipSwitch extends HTMLElement {
 
 		this._boxes = [...this.querySelectorAll('input[type="checkbox"]')];
 
-		// Handle focus-visible for keyboard navigation only
 		let mouseDown = false;
 		this.addEventListener('mousedown', () => {
 			mouseDown = true;
@@ -43,7 +41,6 @@ class DipSwitch extends HTMLElement {
 
 		this._boxes.forEach(box => {
 			box.addEventListener('focus', () => {
-				// Only show focus outline if focused via keyboard (not mouse click)
 				if (!mouseDown && box.matches(':focus-visible')) {
 					this.classList.add('keyboard-focus');
 				}
@@ -57,22 +54,18 @@ class DipSwitch extends HTMLElement {
 			if (!(e.target instanceof HTMLInputElement)) return;
 			this._syncValueFromUI();
 			this._syncHiddenInput();
-			this.dispatchEvent(new Event('input', { bubbles: true }));
 			this.dispatchEvent(new Event('change', { bubbles: true }));
 		});
 
-		// Apply current attribute values to UI now that DOM is ready
 		if (!this.hasAttribute('value')) this.value = 0;
 		this._syncUIFromValue(this.value);
 		this._syncLegend();
 		this._applyDisabled();
 		this._syncHiddenInput();
 
-		// Expert mode hover handling - unified with keyboard selection
 		this.addEventListener('mouseenter', () => {
 			if (window.isExpertModeActive && window.isExpertModeActive()) {
 				this.classList.add('expert-focus');
-				// Update selected byte state
 				if (window.setSelectedByteFromElement) {
 					window.setSelectedByteFromElement(this);
 				}
@@ -80,8 +73,6 @@ class DipSwitch extends HTMLElement {
 		});
 
 		this.addEventListener('mouseleave', () => {
-			// Remove focus if this byte is not the currently selected byte
-			// (keyboard selection should persist)
 			if (window.isByteSelected && !window.isByteSelected(this)) {
 				this.classList.remove('expert-focus');
 			}
@@ -94,25 +85,30 @@ class DipSwitch extends HTMLElement {
 	 */
 	toggleBit(bitPosition) {
 		if (bitPosition < 1 || bitPosition > 8) return;
-		// Convert 1-8 to data-bit: 1 -> 7 (leftmost/MSB), 8 -> 0 (rightmost/LSB)
-		// Position 1 = leftmost = data-bit="7"
-		// Position 8 = rightmost = data-bit="0"
 		const dataBit = 8 - bitPosition;
 		const box = this._boxes.find(b => Number(b.dataset.bit) === dataBit);
 		if (box) {
 			box.checked = !box.checked;
 			this._syncValueFromUI();
 			this._syncHiddenInput();
-			this.dispatchEvent(new Event('input', { bubbles: true }));
 			this.dispatchEvent(new Event('change', { bubbles: true }));
 		}
 	}
 
-	attributeChangedCallback(name) {
-		// Only sync to UI if element is connected and initialized
+	attributeChangedCallback(name, oldValue, newValue) {
 		if (!this._fieldset) return;
 
-		if (name === 'value') this._syncUIFromValue(this.value);
+		if (name === 'value') {
+			const oldNum = oldValue !== null ? Number(oldValue) : null;
+			const newNum = newValue !== null ? Number(newValue) : null;
+			const valueChanged = oldNum !== newNum;
+
+			this._syncUIFromValue(this.value);
+
+			if (valueChanged) {
+				this.dispatchEvent(new Event('change', { bubbles: true }));
+			}
+		}
 		if (name === 'label') this._syncLegend();
 		if (name === 'disabled') this._applyDisabled();
 		if (name === 'name') this._syncHiddenInput();

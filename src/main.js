@@ -5,12 +5,12 @@ import './dip-switch-group.css';
 import './dip-switch-group.js';
 import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
+import { CrossTabSync } from './cross-tab-sync.js';
 
-const numRows = 9; // 1 settings row + 8 instrument rows.
+const numRows = 9;
 
-// Default values stored by index
 const defaultValues = [
-	{ settings: 0b0111100000000000, notes: 0 }, // Index 0: SET row
+	{ settings: 0b0111100011000000, notes: 0b10 },
 	{ notes: 0b10001000100010001000100010000000 },
 	{ notes: 0b1000 },
 	{ notes: 0b100000000000000010000000 },
@@ -22,8 +22,12 @@ const defaultValues = [
 ].map((row, i) => (i ? { settings: (i - 1) << 8, notes: row.notes } : row));
 
 document.querySelector('#app').innerHTML = `
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading samples...</div>
+    </div>
     <div class="description">
-      <p>The observable universe has about 1,000,000,000,000,000,000,000 stars. A single one of these rows has nearly the same number of possible configurations. I know, it surprised me too. How many possible configurations exist if you have five rows hooked together? Let’s put it like this. Imagine each star in our universe contains its own universe full of stars. Enter a star; any star will do. Good choice. Now – see all the stars in this sub-universe? They’re also universes full of stars. We’re getting closer… but we're still about one trevigintillion stars short.</p>
+      <p>The observable universe has about 1,000,000,000,000,000,000,000 stars. A single one of these rows has nearly the same number of possible configurations. I know, it surprised me too. How many possible configurations exist if you have five rows hooked together? Let's put it like this. Imagine each star in our universe contains its own universe full of stars. Enter a star; any star will do. Good choice. Now – see all the stars in this sub-universe? They're also universes full of stars. We're getting closer… but we're still about one trevigintillion stars short.</p>
       <p>This machine is full of almost limitless songs. Your job is to discover them.</p>
     </div>
     <div class="circuit-board">
@@ -36,61 +40,57 @@ document.querySelector('#app').innerHTML = `
     </div>
 `;
 
-// Set default values after elements are created
-Array.from(document.querySelectorAll('dip-switch-group')).forEach((group, i) => {
+const clock = new SequencerClock();
+
+let crossTabSync = null;
+
+let samplePlayer = null;
+
+let leaderBaseTempo = null;
+
+let preloadedSampleData = new Map();
+
+const setRow = document.querySelector('dip-switch-group[data-settings]');
+
+let selectedByte = null;
+let clipboard = null;
+
+const HOLD_DURATION = 500;
+const LONG_HOLD_DURATION = 2000;
+
+const expertShortcuts = {
+	pressHandlers: new Map(),
+	holdHandlers: new Map(),
+	longHoldHandlers: new Map(),
+	highlightTimeouts: new Map(),
+	keyDownTimes: new Map(),
+	heldKeys: new Set(),
+	invalidKeys: new Set(),
+};
+
+let cachedRowGroups = null;
+function getAllRowGroups() {
+	if (cachedRowGroups === null) {
+		cachedRowGroups = Array.from(document.querySelectorAll('dip-switch-group'));
+	}
+	return cachedRowGroups;
+}
+
+getAllRowGroups().forEach((group, i) => {
 	if (defaultValues[i] !== undefined) {
 		group.value = defaultValues[i];
 	}
 });
 
-// Initialize sequencer clock
-const clock = new SequencerClock();
-
-// Initialize sample player (will be set up after audio context is ready)
-let samplePlayer = null;
-
-// Get the SET row (has data-settings flag) and listen for changes
-const setRow = document.querySelector('dip-switch-group[data-settings]');
-
-// Expert mode state
-let selectedByte = null; // { rowIndex: number, byteIndex: number } | null
-let clipboard = null; // { type: 'byte' | 'row', value: number | number[] } | null
-
-// Hold durations
-const HOLD_DURATION = 500;
-const LONG_HOLD_DURATION = 2000;
-
-// Expert shortcuts registry
-const expertShortcuts = {
-	pressHandlers: new Map(),
-	holdHandlers: new Map(),
-	longHoldHandlers: new Map(), // Handlers after 1s
-	highlightTimeouts: new Map(), // key -> array of timeout IDs
-	keyDownTimes: new Map(), // key -> timestamp
-	heldKeys: new Set(), // Keys currently being held
-	invalidKeys: new Set(), // Keys that became invalid due to selection change
-};
-
-const getAllRowGroups = () => {
-	return Array.from(document.querySelectorAll('dip-switch-group'));
-};
-
-// Check if expert mode is active
-// Expert mode is controlled by bit 1 (2nd from right, labeled "7") of the last byte (byte index 5) of the settings row
 const isExpertModeActive = () => {
-	if (!setRow) return false;
-	const lastByte = setRow.getByte(5); // Last byte is index 5
+	const lastByte = setRow.getByte(5);
 	if (!lastByte) return false;
 	const byteValue = lastByte.value;
-	// Bit 1 (0-indexed from right) = data-bit="1" (0-indexed from left)
-	// Check if bit 1 is set: (byteValue >> 1) & 0b1
 	return ((byteValue >> 1) & 0b1) === 1;
 };
 
-// Expose to window for dip-switch hover handler
 window.isExpertModeActive = isExpertModeActive;
 
-// Get the currently selected byte element
 const getSelectedByteElement = () => {
 	if (!selectedByte) return null;
 	const groups = getAllRowGroups();
@@ -99,18 +99,15 @@ const getSelectedByteElement = () => {
 	return group.getByte(selectedByte.byteIndex);
 };
 
-// Determine if selected byte is a settings byte (0-1) or notes byte (2-5)
 const getSelectedByteType = () => {
 	if (!selectedByte) return null;
 	if (selectedByte.rowIndex === 0) return 'settingsRow';
 	return selectedByte.byteIndex < 2 ? 'settings' : 'notes';
 };
 
-// Expose function to set selected byte from hover
 window.setSelectedByteFromElement = byteElement => {
 	if (!isExpertModeActive()) return;
 
-	// Find the row and byte index for this element
 	const groups = getAllRowGroups();
 	for (let rowIndex = 0; rowIndex < groups.length; rowIndex++) {
 		const group = groups[rowIndex];
@@ -123,18 +120,14 @@ window.setSelectedByteFromElement = byteElement => {
 	}
 };
 
-// Expose function to get selected byte element for hover leave check
 window.getSelectedByteElement = getSelectedByteElement;
 
-// Expose function to check if a byte element is currently selected
 window.isByteSelected = byteElement => {
 	const selected = getSelectedByteElement();
 	return selected === byteElement;
 };
 
-// Set the selected byte and update UI
 const setSelectedByte = (rowIndex, byteIndex) => {
-	// If selection is changing and there are held keys, invalidate them
 	if (selectedByte && (selectedByte.rowIndex !== rowIndex || selectedByte.byteIndex !== byteIndex)) {
 		if (expertShortcuts.heldKeys.size > 0) {
 			expertShortcuts.heldKeys.forEach(key => {
@@ -151,7 +144,6 @@ const setSelectedByte = (rowIndex, byteIndex) => {
 		}
 	}
 
-	// Remove previous selection
 	if (selectedByte) {
 		const prevGroups = getAllRowGroups();
 		const prevGroup = prevGroups[selectedByte.rowIndex];
@@ -163,13 +155,11 @@ const setSelectedByte = (rowIndex, byteIndex) => {
 		}
 	}
 
-	// Validate indices
 	const groups = getAllRowGroups();
 	if (rowIndex < 0 || rowIndex >= groups.length) return;
 	const group = groups[rowIndex];
 	if (!group || byteIndex < 0 || byteIndex >= 6) return;
 
-	// Set new selection
 	selectedByte = { rowIndex, byteIndex };
 	const byte = group.getByte(byteIndex);
 	if (byte) {
@@ -177,9 +167,7 @@ const setSelectedByte = (rowIndex, byteIndex) => {
 	}
 };
 
-// Navigate to adjacent byte with wrapping
 const navigateByte = direction => {
-	// If no selection, start at first byte of first row
 	if (!selectedByte) {
 		setSelectedByte(0, 0);
 		return;
@@ -222,11 +210,6 @@ const navigateByte = direction => {
 	setSelectedByte(newRowIndex, newByteIndex);
 };
 
-// Register an expert mode shortcut
-// keys: string or array of strings (e.g., 'c' or ['0', 'z', 'Z'])
-// onPress: callback for immediate press action (optional)
-// onHold: callback for hold action after 500ms (optional)
-// onLongHold: callback for long hold action after 1000ms (optional)
 const registerExpertShortcut = (keys, onPress, onHold, onLongHold) => {
 	const keyArray = Array.isArray(keys) ? keys : [keys];
 	keyArray.forEach(key => {
@@ -238,13 +221,11 @@ const registerExpertShortcut = (keys, onPress, onHold, onLongHold) => {
 	});
 };
 
-// Copy byte value
 const copyByte = byteElement => {
 	if (!byteElement) return;
 	clipboard = { type: 'byte', value: byteElement.value };
 };
 
-// Helper to flash specific bytes in a row
 const flashBytes = (rowElement, byteIndices) => {
 	if (!rowElement || !byteIndices) return;
 	byteIndices.forEach(index => {
@@ -258,7 +239,6 @@ const flashBytes = (rowElement, byteIndices) => {
 	});
 };
 
-// Copy entire row (for long hold)
 const copyEntireRow = rowElement => {
 	if (!rowElement || !selectedByte) return;
 	const bytes = rowElement.getAllBytes();
@@ -269,7 +249,6 @@ const copyEntireRow = rowElement => {
 	}
 };
 
-// Copy settings bytes (first 2 bytes) - only for instrument rows
 const copyInstrumentSettings = rowElement => {
 	if (!rowElement) return;
 	const bytes = rowElement.getAllBytes();
@@ -277,7 +256,6 @@ const copyInstrumentSettings = rowElement => {
 	flashBytes(rowElement, [0, 1]);
 };
 
-// Copy notes bytes (last 4 bytes) - only for instrument rows
 const copyInstrumentNotes = rowElement => {
 	if (!rowElement) return;
 	const bytes = rowElement.getAllBytes();
@@ -285,7 +263,6 @@ const copyInstrumentNotes = rowElement => {
 	flashBytes(rowElement, [2, 3, 4, 5]);
 };
 
-// Check if clipboard type is valid for current selection
 const isValidClipboardForSelection = () => {
 	if (!selectedByte || !clipboard) return false;
 	const rowIndex = selectedByte.rowIndex;
@@ -297,7 +274,6 @@ const isValidClipboardForSelection = () => {
 	return byteIndex < 2 === (clipboard.type === 'instrumentSettings');
 };
 
-// Paste bytes - handles all paste operations
 const pasteBytes = () => {
 	if (!clipboard || !selectedByte || !isValidClipboardForSelection()) return;
 
@@ -310,28 +286,23 @@ const pasteBytes = () => {
 	const bytes = row.getAllBytes();
 
 	if (clipboard.type === 'byte') {
-		// Paste single byte to selected byte
 		const byte = row.getByte(byteIndex);
 		if (byte) byte.value = clipboard.value;
 	} else if (clipboard.type === 'settingsRow' && Array.isArray(clipboard.value)) {
-		// Paste entire settings row
 		if (rowIndex === 0) {
 			row.setAllBytes(clipboard.value);
 		}
 	} else if (clipboard.type === 'instrumentRow' && Array.isArray(clipboard.value)) {
-		// Paste entire instrument row
 		if (rowIndex > 0) {
 			row.setAllBytes(clipboard.value);
 		}
 	} else if (clipboard.type === 'instrumentSettings' && Array.isArray(clipboard.value)) {
-		// Paste instrument settings bytes
 		if (rowIndex > 0) {
 			bytes[0] = clipboard.value[0] ?? bytes[0];
 			bytes[1] = clipboard.value[1] ?? bytes[1];
 			row.setAllBytes(bytes);
 		}
 	} else if (clipboard.type === 'instrumentNotes' && Array.isArray(clipboard.value)) {
-		// Paste instrument notes bytes
 		if (rowIndex > 0) {
 			bytes[2] = clipboard.value[0] ?? bytes[2];
 			bytes[3] = clipboard.value[1] ?? bytes[3];
@@ -342,7 +313,6 @@ const pasteBytes = () => {
 	}
 };
 
-// Handle keyboard shortcuts
 const handleKeyboardShortcut = (key, event) => {
 	if (!isExpertModeActive()) return false;
 
@@ -354,23 +324,18 @@ const handleKeyboardShortcut = (key, event) => {
 	const longHoldHandler = expertShortcuts.longHoldHandlers.get(keyLower);
 	const pressHandler = expertShortcuts.pressHandlers.get(keyLower);
 
-	// If there's a hold or longHold handler, set up highlight timeouts
 	if (holdHandler || longHoldHandler) {
 		if (event.repeat) return false;
 
 		expertShortcuts.heldKeys.add(keyLower);
 
-		// Clear any existing highlights
 		clearHighlights();
 
-		// Get timeout array for this key
 		const timeouts = expertShortcuts.highlightTimeouts.get(keyLower) || [];
 
-		// Determine which cells to highlight based on key and selection
 		if (holdHandler) {
 			const timeout = setTimeout(() => {
 				if (expertShortcuts.invalidKeys.has(keyLower)) return;
-				// Copy: highlight settings or notes bytes
 				const byteType = getSelectedByteType();
 				if (byteType === 'settings') {
 					highlightCells([0, 1]);
@@ -389,12 +354,10 @@ const handleKeyboardShortcut = (key, event) => {
 			timeouts.push(timeout);
 		}
 
-		// Record when key was pressed
 		expertShortcuts.keyDownTimes.set(keyLower, Date.now());
 		return true;
 	}
 
-	// No hold handler, run press handler immediately
 	if (pressHandler) {
 		pressHandler();
 		return true;
@@ -403,14 +366,12 @@ const handleKeyboardShortcut = (key, event) => {
 	return false;
 };
 
-// Clear all highlights
 const clearHighlights = () => {
 	document.querySelectorAll('.expert-highlight').forEach(el => {
 		el.classList.remove('expert-highlight');
 	});
 };
 
-// Highlight cells that will be affected
 const highlightCells = byteIndices => {
 	if (!selectedByte) return;
 	const groups = getAllRowGroups();
@@ -422,11 +383,9 @@ const highlightCells = byteIndices => {
 	});
 };
 
-// Handle keyboard events
 const handleKeyDown = e => {
 	if (!isExpertModeActive()) return;
 
-	// Handle arrow keys for navigation
 	if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
 		e.preventDefault();
 		const directionMap = {
@@ -439,7 +398,6 @@ const handleKeyDown = e => {
 		return;
 	}
 
-	// Handle Tab key to focus first bit of selected byte
 	if (e.key === 'Tab' && selectedByte && !e.ctrlKey && !e.altKey) {
 		const byteElement = getSelectedByteElement();
 		if (byteElement) {
@@ -449,7 +407,6 @@ const handleKeyDown = e => {
 		return;
 	}
 
-	// Handle shortcuts (only if not using Ctrl/Alt for browser shortcuts)
 	if (!e.metaKey && !e.ctrlKey && !e.altKey) {
 		const handled = handleKeyboardShortcut(e.key, e);
 		if (handled) {
@@ -458,7 +415,6 @@ const handleKeyDown = e => {
 	}
 };
 
-// Handle key up - check duration and run appropriate handler
 const handleKeyUp = e => {
 	const keyLower = e.key.toLowerCase();
 	const keyDownTime = expertShortcuts.keyDownTimes.get(keyLower);
@@ -467,18 +423,17 @@ const handleKeyUp = e => {
 
 	expertShortcuts.heldKeys.delete(keyLower);
 
-	// Clear highlight timeouts
 	const timeouts = expertShortcuts.highlightTimeouts.get(keyLower);
 	if (timeouts) {
 		timeouts.forEach(timeout => clearTimeout(timeout));
-		timeouts.length = 0; // Clear the array
+		timeouts.length = 0;
 	}
 
 	clearHighlights();
 
 	if (expertShortcuts.invalidKeys.has(keyLower)) {
 		expertShortcuts.invalidKeys.delete(keyLower);
-		return; // Do nothing if keypress was invalidated
+		return;
 	}
 
 	const holdDuration = Date.now() - keyDownTime;
@@ -495,22 +450,18 @@ const handleKeyUp = e => {
 	}
 };
 
-// Register all expert mode shortcuts
 const byteElement = () => getSelectedByteElement();
 
-// B: Decrease binary number
 registerExpertShortcut('b', () => {
 	const el = byteElement();
 	if (el) el.value = Math.max(0, el.value - 1);
 });
 
-// G: Increase binary number
 registerExpertShortcut('g', () => {
 	const el = byteElement();
 	if (el) el.value = Math.min(255, el.value + 1);
 });
 
-// C: Copy byte (hold for settings/notes, longHold for entire row)
 registerExpertShortcut(
 	'c',
 	() => {
@@ -531,7 +482,6 @@ registerExpertShortcut(
 		}
 	},
 	() => {
-		// Long hold (1s): copy entire row
 		const groups = getAllRowGroups();
 		if (selectedByte) {
 			const row = groups[selectedByte.rowIndex];
@@ -540,12 +490,10 @@ registerExpertShortcut(
 	}
 );
 
-// V: Paste
 registerExpertShortcut('v', () => {
 	pasteBytes();
 });
 
-// 0/Z: Set byte to 0 (hold for settings/notes/row)
 registerExpertShortcut(
 	['0', 'z', 'Z'],
 	() => {
@@ -575,7 +523,6 @@ registerExpertShortcut(
 	}
 );
 
-// 9/A: Set byte to 255 (hold for settings/notes/row)
 registerExpertShortcut(
 	['9', 'a', 'A'],
 	() => {
@@ -605,19 +552,16 @@ registerExpertShortcut(
 	}
 );
 
-// R: Randomize byte
 registerExpertShortcut('r', () => {
 	const el = byteElement();
 	if (el) el.value = Math.floor(Math.random() * 256);
 });
 
-// T: Toggle all bits
 registerExpertShortcut('t', () => {
 	const el = byteElement();
 	if (el) el.value = el.value ^ 0xff;
 });
 
-// 1-8: Toggle bits
 for (let i = 1; i <= 8; i++) {
 	registerExpertShortcut(String(i), () => {
 		const el = byteElement();
@@ -628,118 +572,231 @@ for (let i = 1; i <= 8; i++) {
 document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
 
-// Update expert mode state when settings row changes
-if (setRow) {
-	setRow.addEventListener('change', () => {
-		// Clear selection when expert mode is turned off
-		if (!isExpertModeActive() && selectedByte) {
-			const groups = getAllRowGroups();
-			if (selectedByte) {
-				const group = groups[selectedByte.rowIndex];
-				const byte = group?.getByte(selectedByte.byteIndex);
-				byte?.classList.remove('expert-focus');
-			}
-			selectedByte = null;
-		}
-	});
-}
-
-// Function to get all row values
-const getAllRowValues = () => {
-	const rowValues = new Map();
-	const groups = Array.from(document.querySelectorAll('dip-switch-group'));
-	groups.forEach((group, i) => {
-		rowValues.set(i, group.value);
-	});
-	return rowValues;
+const handleSetRowChange = () => {
+	if (!isExpertModeActive() && selectedByte) {
+		const groups = getAllRowGroups();
+		const group = groups[selectedByte.rowIndex];
+		const byte = group?.getByte(selectedByte.byteIndex);
+		byte?.classList.remove('expert-focus');
+		selectedByte = null;
+	}
+	updateClockBPM();
 };
 
-// Function to initialize sample player and start sequencer
-const initializeSequencer = async () => {
-	// Wait for audio context to be ready
-	await clock.init();
+let cachedRowValues = new Map();
 
-	// Create sample player
+const updateRowValuesCache = () => {
+	cachedRowValues.clear();
+	const groups = getAllRowGroups();
+	groups.forEach((group, i) => {
+		cachedRowValues.set(i, group.value);
+	});
+};
+
+const getAllRowValues = () => {
+	return cachedRowValues;
+};
+
+updateRowValuesCache();
+
+const handleTick = (tickCount, settings, isLeader = false) => {
+	if (!samplePlayer) return;
+	const shouldPlay = (setRow.value.notes ?? 0) & 0b1;
+	if (!shouldPlay) return;
+	if (!clock.shouldProcessTick(tickCount, settings)) return;
+
+	const effectiveTickCount = clock.calculateEffectiveTickCount(tickCount, settings);
+	if (!isLeader) clock.tickCount = tickCount;
+
+	const rowValues = getAllRowValues();
+	samplePlayer.processTick(effectiveTickCount, rowValues);
+};
+
+document.addEventListener(
+	'change',
+	e => {
+		if (e.target.closest('dip-switch-group')) {
+			updateRowValuesCache();
+		}
+	},
+	true
+);
+
+async function initializeSequencer() {
 	samplePlayer = new SamplePlayer(clock.audioContext);
 
-	// Load all samples
-	await samplePlayer.loadAllSamples();
+	await samplePlayer.decodePreloadedSamples(preloadedSampleData);
+	preloadedSampleData = null;
 
-	// Set up tick listener to play samples
+	crossTabSync = new CrossTabSync(clock);
+
 	clock.onTick((time, tickCount) => {
-		if (samplePlayer) {
-			const rowValues = getAllRowValues();
-			// Pass full row values (settings and notes) to sample player
-			// This allows access to solo, mute, and note settings
-			samplePlayer.processTick(tickCount, rowValues);
-		}
-	});
-
-	console.log('Sequencer initialized and ready');
-};
-
-if (setRow) {
-	// Function to update clock BPM and play/stop state from SET row
-	const updateClockBPM = () => {
 		const setRowValue = setRow.value;
 		const settings = setRowValue.settings || 0;
-		const notes = setRowValue.notes || 0;
-		const bpm = clock.calculateBPM(settings);
 
-		// Extract bit 0 (right-most bit of entire row) to control play/stop
-		// The rightmost bit is bit 0 of the notes section (switch 5, bit 0)
-		const shouldPlay = (notes & 0b1) === 1;
-
-		// Don't play if BPM is 0 or if play bit is off
-		const canPlay = shouldPlay && bpm > 0;
-
-		// Update BPM first (this won't stop/start the clock, just updates timing)
-		clock.setBPM(bpm);
-
-		// Control play/stop state independently
-		// Only try to start if sequencer is initialized (samplePlayer exists)
-		if (canPlay && !clock.isRunning && samplePlayer !== null) {
-			clock.start().catch(err => console.error('Error starting clock:', err));
-		} else if (!canPlay && clock.isRunning) {
-			clock.stop();
+		if (crossTabSync?.isLeader) {
+			crossTabSync.broadcastTick(time, tickCount, settings);
 		}
-	};
 
-	// Listen for changes to the SET row
-	setRow.addEventListener('change', updateClockBPM);
+		handleTick(tickCount, settings, true);
+	});
 
-	// Initialize with current value
 	updateClockBPM();
-
-	// Start the clock and initialize sequencer on first user interaction
-	// Browsers require user interaction before AudioContext can be created
-	let sequencerStarted = false;
-	const startSequencer = async () => {
-		if (sequencerStarted) return;
-		sequencerStarted = true;
-
-		try {
-			await initializeSequencer();
-			// Don't auto-start - let updateClockBPM handle starting based on play bit
-			// This ensures it respects the initial play/stop state
-			updateClockBPM();
-			console.log('Sequencer initialized successfully');
-		} catch (error) {
-			console.error('Error starting sequencer:', error);
-		}
-	};
-
-	// Wait for user interaction before starting
-	const startOnInteraction = e => {
-		startSequencer();
-		// Remove listeners after first interaction
-		document.removeEventListener('click', startOnInteraction);
-		document.removeEventListener('touchstart', startOnInteraction);
-		document.removeEventListener('keydown', startOnInteraction);
-	};
-
-	// Listen for various user interactions
-	document.addEventListener('click', startOnInteraction, { once: true });
-	document.addEventListener('touchstart', startOnInteraction, { once: true });
-	document.addEventListener('keydown', startOnInteraction, { once: true });
+	setRow.addEventListener('change', handleSetRowChange);
 }
+
+async function updateClockBPM() {
+	const setRowValue = setRow.value;
+	const settings = setRowValue.settings || 0;
+	const notes = setRowValue.notes || 0;
+
+	const tempoSettings = clock.extractTempoSettings(settings);
+	const { baseTempo } = tempoSettings;
+
+	const bpm = clock.calculateBPM(settings);
+
+	const maxBPM = clock.calculateMaxBPM(baseTempo);
+
+	const shouldPlay = (notes & 0b1) === 1;
+
+	const canPlay = shouldPlay && bpm > 0;
+
+	const clockBPM = bpm > 0 ? maxBPM : bpm;
+
+	clock.setBPM(clockBPM);
+
+	if (canPlay && !clock.isRunning && samplePlayer !== null) {
+		await clock
+			.start()
+			.then(() => {
+				if (crossTabSync && bpm > 0) {
+					crossTabSync.startLeader(bpm, maxBPM, settings);
+				}
+			})
+			.catch(err => {
+				console.error('Error starting clock:', err);
+			});
+	} else if (!canPlay && clock.isRunning) {
+		clock.stop();
+	}
+
+	if (crossTabSync) {
+		if (bpm > 0) {
+			clock.isFollowingExternal = false;
+			crossTabSync.stopFollower();
+			if (canPlay && clock.isRunning) {
+				crossTabSync.startLeader(bpm, maxBPM, settings);
+			} else if (!canPlay) {
+				crossTabSync.stopLeader();
+			}
+		} else {
+			crossTabSync.stopLeader();
+			clock.isFollowingExternal = true;
+
+			leaderBaseTempo = null;
+
+			crossTabSync.startFollower((time, tickCount, leaderSettings) => {
+				// Extract tempo settings once if provided
+				if (leaderSettings !== undefined && leaderSettings !== null) {
+					const { baseTempo } = clock.extractTempoSettings(leaderSettings);
+					leaderBaseTempo = baseTempo;
+				}
+
+				if (time === null) return;
+
+				if (leaderBaseTempo !== null && leaderBaseTempo > 0) {
+					const currentSettings = setRow.value.settings || 0;
+					const { isMultiply, tempoFactorExponent } = clock.extractTempoSettings(currentSettings);
+
+					const effectiveSettings =
+						(leaderBaseTempo << 8) | (isMultiply ? 0x80 : 0x00) | (tempoFactorExponent << 5);
+
+					handleTick(tickCount, effectiveSettings, false);
+				} else {
+					clock.tickCount = tickCount;
+				}
+			});
+		}
+	}
+}
+
+async function startOnInteraction(e) {
+	if (!clock.audioContext) {
+		clock.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+		if (clock.audioContext.state === 'suspended') {
+			clock.audioContext.resume().catch(err => {
+				console.error('Error resuming AudioContext:', err);
+			});
+		}
+	}
+
+	await initializeSequencer();
+
+	document.removeEventListener('click', startOnInteraction);
+	document.removeEventListener('touchstart', startOnInteraction);
+	document.removeEventListener('keydown', startOnInteraction);
+}
+document.addEventListener('click', startOnInteraction, { once: true });
+document.addEventListener('touchstart', startOnInteraction, { once: true });
+document.addEventListener('keydown', startOnInteraction, { once: true });
+
+const preloadSamples = async () => {
+	const loadingOverlay = document.getElementById('loading-overlay');
+	if (!loadingOverlay) return;
+
+	const soundBanks = [
+		'drum - koan remnants',
+		'note - massive x astral float',
+		'drum - alix perez x eprom',
+		'note - noire felt',
+	];
+
+	try {
+		const baseUrl = import.meta.env.BASE_URL;
+		const preloadedData = new Map();
+		const loadPromises = [];
+
+		for (let soundBank = 0; soundBank < soundBanks.length; soundBank++) {
+			const bankDir = soundBanks[soundBank];
+			for (let note = 0; note < 8; note++) {
+				const fileNum = String(note + 1).padStart(2, '0');
+				const url = `${baseUrl}samples/${bankDir}/${fileNum}.wav`;
+				const key = `${soundBank}-${note}`;
+
+				loadPromises.push(
+					fetch(url)
+						.then(response => {
+							if (!response.ok) {
+								throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+							}
+							return response.arrayBuffer();
+						})
+						.then(arrayBuffer => {
+							if (arrayBuffer.byteLength === 0) {
+								throw new Error('Empty response');
+							}
+							preloadedData.set(key, arrayBuffer);
+						})
+						.catch(error => {
+							console.error(
+								`Failed to preload sample for sound bank ${soundBank}, note ${note} from ${url}:`,
+								error
+							);
+						})
+				);
+			}
+		}
+
+		await Promise.all(loadPromises);
+
+		preloadedSampleData = preloadedData;
+
+		loadingOverlay.classList.add('hidden');
+	} catch (error) {
+		console.error('Error preloading samples:', error);
+		loadingOverlay.classList.add('hidden');
+	}
+};
+
+preloadSamples();
