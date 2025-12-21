@@ -21,23 +21,13 @@ const defaultValues = [
 	{ notes: 0b0 },
 ].map((row, i) => (i ? { settings: (i - 1) << 8, notes: row.notes } : row));
 
-document.querySelector('#app').innerHTML = `
-    <div class="loading-overlay" id="loading-overlay">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Loading samples...</div>
-    </div>
-    <div class="description">
-      <p>The observable universe has about 1,000,000,000,000,000,000,000 stars. A single one of these rows has nearly the same number of possible configurations. I know, it surprised me too. How many possible configurations exist if you have five rows hooked together? Let's put it like this. Imagine each star in our universe contains its own universe full of stars. Enter a star; any star will do. Good choice. Now – see all the stars in this sub-universe? They're also universes full of stars. We're getting closer… but we're still about one trevigintillion stars short.</p>
-      <p>This machine is full of almost limitless songs. Your job is to discover them.</p>
-    </div>
-    <div class="circuit-board">
+document.querySelector('.circuit-board').innerHTML = `
       ${Array.from(
 			{ length: numRows },
 			(_, i) => `
         <dip-switch-group${i === 0 ? ' data-settings' : ''}></dip-switch-group>
       `
 		).join('')}
-    </div>
 `;
 
 const clock = new SequencerClock();
