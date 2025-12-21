@@ -39,17 +39,19 @@ export class SamplePlayer {
 	 * @param {number} note - Note number (0-7)
 	 * @param {number} time - Audio context time to play at (optional)
 	 */
-	playSample(soundBank, note, time = null) {
+	async playSample(soundBank, note, time = null) {
 		const key = `${soundBank}-${note}`;
 		const buffer = this.buffers.get(key);
 		if (!buffer) {
 			return;
 		}
 		if (this.audioContext.state === 'suspended') {
-			this.audioContext.resume().catch(err => {
+			try {
+				await this.audioContext.resume();
+			} catch (err) {
 				console.error('Error resuming AudioContext:', err);
-			});
-			return;
+				return;
+			}
 		}
 
 		const source = this.audioContext.createBufferSource();
@@ -208,16 +210,18 @@ export class SamplePlayer {
 	 * @param {number} tickCount - Current tick count
 	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to their current values
 	 */
-	processTick(tickCount, rowValues) {
+	async processTick(tickCount, rowValues) {
 		if (!this.audioContext) {
 			return;
 		}
 
 		if (this.audioContext.state === 'suspended') {
-			this.audioContext.resume().catch(err => {
+			try {
+				await this.audioContext.resume();
+			} catch (err) {
 				console.error('Error resuming AudioContext:', err);
-			});
-			return;
+				return;
+			}
 		}
 
 		let hasAnySolo = false;
@@ -254,7 +258,7 @@ export class SamplePlayer {
 
 			if (stepActive) {
 				const playTime = this.audioContext.currentTime;
-				this.playSample(settings.midiChannel, settings.note, playTime);
+				await this.playSample(settings.midiChannel, settings.note, playTime);
 			}
 		}
 	}

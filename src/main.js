@@ -586,7 +586,7 @@ const getAllRowValues = () => {
 
 updateRowValuesCache();
 
-const handleTick = (tickCount, settings, isLeader = false) => {
+const handleTick = async (tickCount, settings, isLeader = false) => {
 	if (!samplePlayer) return;
 	const shouldPlay = (setRow.value.notes ?? 0) & 0b1;
 	if (!shouldPlay) return;
@@ -596,7 +596,7 @@ const handleTick = (tickCount, settings, isLeader = false) => {
 	if (!isLeader) clock.tickCount = tickCount;
 
 	const rowValues = getAllRowValues();
-	samplePlayer.processTick(effectiveTickCount, rowValues);
+	await samplePlayer.processTick(effectiveTickCount, rowValues);
 };
 
 document.addEventListener(
@@ -617,7 +617,7 @@ async function initializeSequencer() {
 
 	crossTabSync = new CrossTabSync(clock);
 
-	clock.onTick((time, tickCount) => {
+	clock.onTick(async (time, tickCount) => {
 		const setRowValue = setRow.value;
 		const settings = setRowValue.settings || 0;
 
@@ -625,7 +625,7 @@ async function initializeSequencer() {
 			crossTabSync.broadcastTick(time, tickCount, settings);
 		}
 
-		handleTick(tickCount, settings, true);
+		await handleTick(tickCount, settings, true);
 	});
 
 	updateClockBPM();
@@ -682,7 +682,7 @@ async function updateClockBPM() {
 
 			leaderBaseTempo = null;
 
-			crossTabSync.startFollower((time, tickCount, leaderSettings) => {
+			crossTabSync.startFollower(async (time, tickCount, leaderSettings) => {
 				// Extract tempo settings once if provided
 				if (leaderSettings !== undefined && leaderSettings !== null) {
 					const { baseTempo } = clock.extractTempoSettings(leaderSettings);
@@ -698,7 +698,7 @@ async function updateClockBPM() {
 					const effectiveSettings =
 						(leaderBaseTempo << 8) | (isMultiply ? 0x80 : 0x00) | (tempoFactorExponent << 5);
 
-					handleTick(tickCount, effectiveSettings, false);
+					await handleTick(tickCount, effectiveSettings, false);
 				} else {
 					clock.tickCount = tickCount;
 				}
@@ -710,11 +710,13 @@ async function updateClockBPM() {
 async function startOnInteraction(e) {
 	if (!clock.audioContext) {
 		clock.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+	}
 
-		if (clock.audioContext.state === 'suspended') {
-			clock.audioContext.resume().catch(err => {
-				console.error('Error resuming AudioContext:', err);
-			});
+	if (clock.audioContext.state === 'suspended') {
+		try {
+			await clock.audioContext.resume();
+		} catch (err) {
+			console.error('Error resuming AudioContext:', err);
 		}
 	}
 
