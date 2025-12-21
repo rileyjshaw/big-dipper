@@ -21,20 +21,26 @@
 
 body {
 	margin: 0;
+	height: 100dvh;
+	padding: 12px;
 }
 
 #app {
+	height: 100%;
 	width: 100%;
 	max-width: 1280px;
 	margin: 0 auto;
-	padding: 12px;
-	min-height: 100dvh;
+	display: grid;
+	place-items: center;
+	container-type: size;
 }
 
 .circuit-board {
+	height: min(100%, 109/157 * 100cqw);
+	width: min(100%, 157/109 * 100cqh);
 	display: grid;
 	grid-template-columns: repeat(6, 1fr);
-	gap: 0.5vw;
+	gap: 0.5cqw;
 }
 
 .loading-overlay {
