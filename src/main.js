@@ -7,7 +7,7 @@ import { CrossTabSync } from './cross-tab-sync.js';
 const numRows = 9;
 
 const defaultValues = [
-	{ settings: 0b0111100011000000, notes: 0b10 },
+	{ settings: 0b0111100011000000, notes: 0b10111111000000000000000000000010 },
 	{ notes: 0b10001000100010001000100010000000 },
 	{ notes: 0b1000 },
 	{ notes: 0b100000000000000010000000 },
@@ -586,6 +586,15 @@ const getAllRowValues = () => {
 
 updateRowValuesCache();
 
+const extractVolumeSettings = () => {
+	const setRowValue = setRow.value;
+	const notes = setRowValue.notes || 0;
+	const volumeByte = (notes >> 24) & 0xff;
+	const isOn = (volumeByte >> 7) & 0b1;
+	const volume = volumeByte & 0x7f; // Bits 6-0 (0-127)
+	return isOn * volume;
+};
+
 const handleTick = async (tickCount, settings, isLeader = false) => {
 	if (!samplePlayer) return;
 	const shouldPlay = (setRow.value.notes ?? 0) & 0b1;
@@ -595,8 +604,9 @@ const handleTick = async (tickCount, settings, isLeader = false) => {
 	const effectiveTickCount = clock.calculateEffectiveTickCount(tickCount, settings);
 	if (!isLeader) clock.tickCount = tickCount;
 
+	const masterVolume = extractVolumeSettings();
 	const rowValues = getAllRowValues();
-	await samplePlayer.processTick(effectiveTickCount, rowValues);
+	await samplePlayer.processTick(effectiveTickCount, rowValues, masterVolume);
 };
 
 document.addEventListener(

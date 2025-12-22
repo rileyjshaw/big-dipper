@@ -7,6 +7,15 @@ export class SamplePlayer {
 		this.audioContext = audioContext;
 		this.buffers = new Map();
 		this.euclideanCache = new Map();
+		this.masterGainNode = null;
+		this.setupMasterGain();
+	}
+
+	setupMasterGain() {
+		if (this.masterGainNode) return; // Already set up
+		this.masterGainNode = this.audioContext.createGain();
+		this.masterGainNode.gain.value = 1.0;
+		this.masterGainNode.connect(this.audioContext.destination);
 	}
 
 	/**
@@ -38,8 +47,10 @@ export class SamplePlayer {
 	 * @param {number} soundBank - Sound bank index (0-7)
 	 * @param {number} note - Note number (0-7)
 	 * @param {number} time - Audio context time to play at (optional)
+	 * @param {number} volume - Volume level (0-127, optional)
 	 */
-	async playSample(soundBank, note, time = null) {
+	async playSample(soundBank, note, time = null, volume = 127) {
+		console.log('playSample', soundBank, note, time, volume);
 		const key = `${soundBank}-${note}`;
 		const buffer = this.buffers.get(key);
 		if (!buffer) {
@@ -56,7 +67,15 @@ export class SamplePlayer {
 
 		const source = this.audioContext.createBufferSource();
 		source.buffer = buffer;
-		source.connect(this.audioContext.destination);
+
+		// Create a gain node for this sample with volume control
+		const gainNode = this.audioContext.createGain();
+		// Convert volume (0-127) to gain (0.0-1.0)
+		const gainValue = volume / 127;
+		gainNode.gain.value = gainValue;
+
+		source.connect(gainNode);
+		gainNode.connect(this.masterGainNode || this.audioContext.destination);
 
 		const playTime = time !== null ? time : this.audioContext.currentTime;
 		source.start(playTime);
@@ -209,12 +228,9 @@ export class SamplePlayer {
 	 * Process a tick - check all rows and play samples for active steps
 	 * @param {number} tickCount - Current tick count
 	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to their current values
+	 * @param {number} masterVolume - Master volume level (0-127, optional, defaults to 127)
 	 */
-	async processTick(tickCount, rowValues) {
-		if (!this.audioContext) {
-			return;
-		}
-
+	async processTick(tickCount, rowValues, masterVolume = 127) {
 		if (this.audioContext.state === 'suspended') {
 			try {
 				await this.audioContext.resume();
@@ -258,7 +274,7 @@ export class SamplePlayer {
 
 			if (stepActive) {
 				const playTime = this.audioContext.currentTime;
-				await this.playSample(settings.midiChannel, settings.note, playTime);
+				await this.playSample(settings.midiChannel, settings.note, playTime, masterVolume);
 			}
 		}
 	}
