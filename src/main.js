@@ -3,6 +3,7 @@ import './dip-switch-group.js';
 import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
 import { CrossTabSync } from './cross-tab-sync.js';
+import { MidiOutput } from './midi-output.js';
 
 const numRows = 9;
 
@@ -10,7 +11,7 @@ const defaultValues = [
 	{
 		settings: 0b0111100011000000,
 		notes: 0b10111111000000000000000000000010,
-		labels: ['BPM', 'BPM Mod', 'Vol', 'Scale', 'Preset', 'Play'],
+		labels: ['BPM', 'BPM Mod', 'Volume', 'MIDI Scale', 'Preset', 'Play'],
 	},
 	{ notes: 0b10001000100010001000100010000000 },
 	{ notes: 0b1000 },
@@ -20,7 +21,7 @@ const defaultValues = [
 	{ notes: 0b100000000000000010000000 },
 	{ notes: 0b10000000000000101000100000100000 },
 	{ notes: 0b0 },
-].map((row, i) => (i ? { ...row, settings: (i - 1) << 8, labels: ['Inst', 'Mode'] } : row));
+].map((row, i) => (i ? { ...row, settings: (i - 1) << 8, labels: ['Instrument', 'Mode'] } : row));
 
 document.querySelector('.circuit-board').innerHTML = `
       ${Array.from(
@@ -36,6 +37,8 @@ const clock = new SequencerClock();
 let crossTabSync = null;
 
 let samplePlayer = null;
+
+let midiOutput = null;
 
 let leaderBaseTempo = null;
 
@@ -621,6 +624,18 @@ const handleTick = async (tickCount, settings, isLeader = false) => {
 	const masterVolume = extractVolumeSettings();
 	const rowValues = getAllRowValues();
 	await samplePlayer.processTick(effectiveTickCount, rowValues, masterVolume);
+
+	// Process MIDI output (only if MIDI API is supported)
+	if (midiOutput && MidiOutput.isSupported()) {
+		const settingsRowNotes = setRow.value.notes ?? 0;
+		await midiOutput.processTick(
+			effectiveTickCount,
+			rowValues,
+			settingsRowNotes,
+			samplePlayer.extractRowSettings.bind(samplePlayer),
+			samplePlayer.stepCheckers
+		);
+	}
 };
 
 document.addEventListener(
@@ -638,6 +653,9 @@ async function initializeSequencer() {
 
 	await samplePlayer.decodePreloadedSamples(preloadedSampleData);
 	preloadedSampleData = null;
+
+	// Create MIDI output instance but don't initialize until toggle is enabled
+	midiOutput = new MidiOutput();
 
 	crossTabSync = new CrossTabSync(clock);
 
