@@ -1,5 +1,5 @@
 class DipSwitchGroup extends HTMLElement {
-	static observedAttributes = ['data-settings', 'disabled'];
+	static observedAttributes = ['data-settings'];
 
 	constructor() {
 		super();
@@ -28,15 +28,6 @@ class DipSwitchGroup extends HTMLElement {
 		});
 	}
 
-	attributeChangedCallback(name) {
-		if (name === 'disabled') {
-			const disabled = this.hasAttribute('disabled');
-			this._switches.forEach(switchEl => {
-				switchEl.disabled = disabled;
-			});
-		}
-	}
-
 	get value() {
 		const numSwitches = this._switches.length;
 
@@ -53,14 +44,6 @@ class DipSwitchGroup extends HTMLElement {
 		}
 
 		return { settings, notes };
-	}
-
-	get disabled() {
-		return this.hasAttribute('disabled');
-	}
-
-	set disabled(v) {
-		v ? this.setAttribute('disabled', '') : this.removeAttribute('disabled');
 	}
 
 	/**

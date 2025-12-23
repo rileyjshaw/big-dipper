@@ -9,6 +9,12 @@ export class SamplePlayer {
 		this.euclideanCache = new Map();
 		this.masterGainNode = null;
 		this.setupMasterGain();
+		// Checks if a step is active for a given step / mode / settings.
+		this.stepCheckers = [
+			this.isStepActive,
+			this.isStepActiveEuclidean,
+			// Modes 2-7 reserved for future use.
+		];
 	}
 
 	setupMasterGain() {
@@ -84,13 +90,15 @@ export class SamplePlayer {
 	/**
 	 * Check if a step is active in a row value
 	 * Only checks the blue switches (last 32 bits, bits 0-31)
-	 * @param {number} value - The row value (48-bit number, but only last 32 bits are used)
+	 * @param {number} index - Row index (unused for step mode)
+	 * @param {number} notes - The row value (48-bit number, but only last 32 bits are used)
 	 * @param {number} tickCount - Current tick count from the clock
+	 * @param {number} modeSettings - Mode-specific settings (unused for step mode)
 	 * @returns {boolean}
 	 */
-	isStepActive(value, tickCount) {
+	isStepActive(index, notes, tickCount, modeSettings) {
 		const bitPosition = 31 - (tickCount % 32);
-		const bigValue = BigInt(value);
+		const bigValue = BigInt(notes);
 		const bitMask = 1n << BigInt(bitPosition);
 		return (bigValue & bitMask) !== 0n;
 	}
@@ -98,24 +106,35 @@ export class SamplePlayer {
 	/**
 	 * Extract per-row settings from the settings bytes
 	 * @param {number} settings - Settings value (first 2 bytes, 16 bits)
-	 * @returns {Object} Object with solo, mute, midiChannel, note, and euclideanMode properties
+	 * @returns {Object} Object with solo, mute, midiChannel, note, mode, and modeSettings properties
+	 *   - solo: boolean - Whether this row is soloed
+	 *   - mute: boolean - Whether this row is muted
+	 *   - midiChannel: number - MIDI channel (0-7)
+	 *   - note: number - Note number (0-7)
+	 *   - mode: number - Step mode (0-7, 0=step, 1=euclidean, 2-7 reserved)
+	 *   - modeSettings: number - Mode-specific settings (5 bits, 0-31)
 	 */
 	extractRowSettings(settings) {
 		const firstByte = (settings >> 8) & 0xff;
 
-		const solo = (firstByte >> 7) & 0b1;
-
-		const mute = (firstByte >> 6) & 0b1;
-
+		const solo = !!((firstByte >> 7) & 0b1);
+		const mute = !!((firstByte >> 6) & 0b1);
 		const midiChannel = (firstByte >> 3) & 0b111;
-
 		const note = (firstByte >> 0) & 0b111;
 
 		const secondByte = settings & 0xff;
 
-		const euclideanMode = (secondByte >> 0) & 0b1;
+		const mode = (secondByte >> 0) & 0b111;
+		const modeSettings = (secondByte >> 3) & 0b11111;
 
-		return { solo: solo === 1, mute: mute === 1, midiChannel, note, euclideanMode: euclideanMode === 1 };
+		return {
+			solo,
+			mute,
+			midiChannel,
+			note,
+			mode,
+			modeSettings,
+		};
 	}
 
 	/**
@@ -203,14 +222,13 @@ export class SamplePlayer {
 	 *   - Bits 15-8 (3rd byte): Initial Rotation (8 bits, 0-255, treated as signed -128 to 127)
 	 *   - Bits 7-0 (4th byte): Rotation Increment (8 bits, 0-255, treated as signed -128 to 127)
 	 * @param {number} tickCount - Current tick count from the clock
+	 * @param {number} modeSettings - Mode-specific settings (unused for euclidean mode)
 	 * @returns {boolean}
 	 */
-	isStepActiveEuclidean(index, notes, tickCount) {
+	isStepActiveEuclidean(index, notes, tickCount, modeSettings) {
 		const cacheEntry = this.getEuclideanPattern(index, notes);
 
-		if (cacheEntry === null) {
-			return false;
-		}
+		if (cacheEntry === null) return false;
 
 		const { pattern, totalSteps, initialRotation, rotationIncrement } = cacheEntry;
 
@@ -240,39 +258,22 @@ export class SamplePlayer {
 			}
 		}
 
+		const instrumentRows = Array.from(rowValues.entries()).slice(1);
 		let hasAnySolo = false;
 		const rowSettings = new Map();
-		for (const [index, value] of rowValues.entries()) {
-			if (index === 0) continue;
+		for (const [index, value] of instrumentRows) {
 			const settings = this.extractRowSettings(value.settings || 0);
 			rowSettings.set(index, settings);
-			if (settings.solo) {
-				hasAnySolo = true;
-			}
+			if (settings.solo) hasAnySolo = true;
 		}
 
-		for (const [index, value] of rowValues.entries()) {
-			if (index === 0) continue;
-
+		for (const [index, value] of instrumentRows) {
 			const settings = rowSettings.get(index);
-			if (!settings) continue;
+			if (!settings || settings.mute || (hasAnySolo && !settings.solo)) continue;
 
-			if (settings.mute) {
-				continue;
-			}
-
-			if (hasAnySolo && !settings.solo) {
-				continue;
-			}
-
-			let stepActive = false;
-			if (settings.euclideanMode) {
-				stepActive = this.isStepActiveEuclidean(index, value.notes || 0, tickCount);
-			} else {
-				stepActive = this.isStepActive(value.notes || 0, tickCount);
-			}
-
-			if (stepActive) {
+			const stepChecker = this.stepCheckers[settings.mode];
+			if (!stepChecker) continue;
+			if (stepChecker(index, value.notes || 0, tickCount, settings.modeSettings)) {
 				const playTime = this.audioContext.currentTime;
 				await this.playSample(settings.midiChannel, settings.note, playTime, masterVolume);
 			}
