@@ -84,7 +84,7 @@ dip-switch .switch::after {
 	aspect-ratio: 1;
 	border-radius: 1cqw;
 	background: #fff;
-	transform: translateY(14cqw);
+	transform: translateY(13.5cqw);
 	transition: transform 120ms ease;
 }
 
