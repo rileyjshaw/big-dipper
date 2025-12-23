@@ -110,7 +110,8 @@ export class MidiOutput {
 		const noteIndex = Math.max(0, Math.min(7, noteSelect));
 		const scaleOffset = scale[noteIndex] || 0;
 
-		const midiNote = noteOffset + scaleOffset;
+		// A0 is MIDI note 21, so offset 0 maps to A0
+		const midiNote = 21 + noteOffset + scaleOffset;
 		return Math.max(0, Math.min(127, midiNote));
 	}
 
