@@ -55,32 +55,6 @@ class DipSwitchGroup extends HTMLElement {
 		return { settings, notes };
 	}
 
-	set value(v) {
-		const numSwitches = this._switches.length;
-		if (numSwitches === 0) return;
-
-		if (typeof v === 'object' && v !== null && ('settings' in v || 'notes' in v)) {
-			const settings = v.settings || 0;
-			const notes = v.notes || 0;
-
-			for (let i = 0; i < 2 && i < numSwitches; i++) {
-				const shift = (1 - i) * 8;
-				this._switches[i].value = (settings >> shift) & 0xff;
-			}
-
-			for (let i = 2; i < numSwitches; i++) {
-				const shift = (5 - i) * 8;
-				this._switches[i].value = (notes >> shift) & 0xff;
-			}
-		} else {
-			const val = Number(v);
-			for (let i = 0; i < numSwitches; i++) {
-				const divisor = Math.pow(256, numSwitches - 1 - i);
-				this._switches[i].value = Math.floor((val / divisor) % 256) & 0xff;
-			}
-		}
-	}
-
 	get disabled() {
 		return this.hasAttribute('disabled');
 	}

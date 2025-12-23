@@ -7,7 +7,11 @@ import { CrossTabSync } from './cross-tab-sync.js';
 const numRows = 9;
 
 const defaultValues = [
-	{ settings: 0b0111100011000000, notes: 0b10111111000000000000000000000010 },
+	{
+		settings: 0b0111100011000000,
+		notes: 0b10111111000000000000000000000010,
+		labels: ['BPM', 'BPM Mod', 'Vol', 'Scale', 'Preset', 'Play'],
+	},
 	{ notes: 0b10001000100010001000100010000000 },
 	{ notes: 0b1000 },
 	{ notes: 0b100000000000000010000000 },
@@ -16,7 +20,7 @@ const defaultValues = [
 	{ notes: 0b100000000000000010000000 },
 	{ notes: 0b10000000000000101000100000100000 },
 	{ notes: 0b0 },
-].map((row, i) => (i ? { settings: (i - 1) << 8, notes: row.notes } : row));
+].map((row, i) => (i ? { ...row, settings: (i - 1) << 8, labels: ['Inst', 'Mode'] } : row));
 
 document.querySelector('.circuit-board').innerHTML = `
       ${Array.from(
@@ -64,8 +68,18 @@ function getAllRowGroups() {
 }
 
 getAllRowGroups().forEach((group, i) => {
-	if (defaultValues[i] !== undefined) {
-		group.value = defaultValues[i];
+	const value = defaultValues[i];
+
+	for (let j = 0; j < 6; ++j) {
+		const switchEl = group.getByte(j);
+		if (!value || !switchEl) continue;
+		const label = value.labels?.[j];
+		let bits = 0;
+		if (j < 2) bits = value.settings >>> ((1 - j) * 8);
+		else bits = value.notes >>> ((5 - j) * 8);
+
+		if (bits) switchEl.value = bits & 0xff;
+		if (label) switchEl.label = label;
 	}
 });
 
