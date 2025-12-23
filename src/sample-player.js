@@ -14,20 +14,19 @@ export class SamplePlayer {
 			this.isStepActive,
 			this.isStepActiveEuclidean,
 			// Modes 2-7 reserved for future use.
-		];
+		].map(fn => fn.bind(this));
 	}
 
 	setupMasterGain() {
-		if (this.masterGainNode) return; // Already set up
+		if (this.masterGainNode) return;
 		this.masterGainNode = this.audioContext.createGain();
 		this.masterGainNode.gain.value = 1.0;
 		this.masterGainNode.connect(this.audioContext.destination);
 	}
 
 	/**
-	 * Decode preloaded sample data (ArrayBuffers) into AudioBuffers
-	 * Used when samples were preloaded before AudioContext was ready
-	 * @param {Map<string, ArrayBuffer>} preloadedData - Map of buffer keys to ArrayBuffer objects
+	 * Decode preloaded sample data into AudioBuffers
+	 * @param {Map<string, ArrayBuffer>} preloadedData
 	 */
 	async decodePreloadedSamples(preloadedData) {
 		const decodePromises = [];
@@ -56,7 +55,6 @@ export class SamplePlayer {
 	 * @param {number} volume - Volume level (0-127, optional)
 	 */
 	async playSample(soundBank, note, time = null, volume = 127) {
-		console.log('playSample', soundBank, note, time, volume);
 		const key = `${soundBank}-${note}`;
 		const buffer = this.buffers.get(key);
 		if (!buffer) {
@@ -74,11 +72,8 @@ export class SamplePlayer {
 		const source = this.audioContext.createBufferSource();
 		source.buffer = buffer;
 
-		// Create a gain node for this sample with volume control
 		const gainNode = this.audioContext.createGain();
-		// Convert volume (0-127) to gain (0.0-1.0)
-		const gainValue = volume / 127;
-		gainNode.gain.value = gainValue;
+		gainNode.gain.value = volume / 127;
 
 		source.connect(gainNode);
 		gainNode.connect(this.masterGainNode || this.audioContext.destination);
@@ -88,31 +83,24 @@ export class SamplePlayer {
 	}
 
 	/**
-	 * Check if a step is active in a row value
-	 * Only checks the blue switches (last 32 bits, bits 0-31)
-	 * @param {number} index - Row index (unused for step mode)
-	 * @param {number} notes - The row value (48-bit number, but only last 32 bits are used)
-	 * @param {number} tickCount - Current tick count from the clock
-	 * @param {number} modeSettings - Mode-specific settings (unused for step mode)
+	 * Check if a step is active in step mode
+	 * @param {number} _index - Row index (unused)
+	 * @param {number} notes - Row value (uses last 32 bits)
+	 * @param {number} tickCount - Current tick count
+	 * @param {number} modeSettings - Sequence length
 	 * @returns {boolean}
 	 */
-	isStepActive(index, notes, tickCount, modeSettings) {
-		const bitPosition = 31 - (tickCount % 32);
-		const bigValue = BigInt(notes);
-		const bitMask = 1n << BigInt(bitPosition);
-		return (bigValue & bitMask) !== 0n;
+	isStepActive(_index, notes, tickCount, modeSettings) {
+		const sequenceLength = modeSettings || 32;
+		const bitPosition = 31 - (tickCount % sequenceLength);
+		const bitMask = 1 << bitPosition;
+		return !!(notes & bitMask);
 	}
 
 	/**
-	 * Extract per-row settings from the settings bytes
-	 * @param {number} settings - Settings value (first 2 bytes, 16 bits)
-	 * @returns {Object} Object with solo, mute, midiChannel, note, mode, and modeSettings properties
-	 *   - solo: boolean - Whether this row is soloed
-	 *   - mute: boolean - Whether this row is muted
-	 *   - midiChannel: number - MIDI channel (0-7)
-	 *   - note: number - Note number (0-7)
-	 *   - mode: number - Step mode (0-7, 0=step, 1=euclidean, 2-7 reserved)
-	 *   - modeSettings: number - Mode-specific settings (5 bits, 0-31)
+	 * Extract per-row settings from settings bytes
+	 * @param {number} settings - Settings value (16 bits)
+	 * @returns {Object} {solo, mute, midiChannel, note, mode, modeSettings}
 	 */
 	extractRowSettings(settings) {
 		const firstByte = (settings >> 8) & 0xff;
@@ -124,7 +112,7 @@ export class SamplePlayer {
 
 		const secondByte = settings & 0xff;
 
-		const mode = (secondByte >> 0) & 0b111;
+		const mode = (secondByte >> 0) & 0b1; // TODO: Once more modes are added, & 0b111 instead.
 		const modeSettings = (secondByte >> 3) & 0b11111;
 
 		return {
@@ -139,75 +127,53 @@ export class SamplePlayer {
 
 	/**
 	 * Generate a Euclidean rhythm pattern
-	 * Distributes k pulses as evenly as possible across n steps
-	 * Uses the standard step-counter method (most common in hardware sequencers)
-	 * @param {number} n - Total number of steps
-	 * @param {number} k - Number of pulses
-	 * @returns {boolean[]} Array of n booleans indicating which steps are active
+	 * @param {number} n - Steps per cycle
+	 * @param {number} k - Pulses per cycle
+	 * @returns {boolean[]}
 	 */
 	generateEuclideanPattern(n, k) {
-		if (k === 0) {
-			return new Array(n).fill(false);
-		}
-		if (k >= n) {
-			return new Array(n).fill(true);
-		}
+		if (k === 0) return new Array(n).fill(false);
+		if (k >= n) return new Array(n).fill(true);
 
 		const pattern = new Array(n);
 		for (let i = 0; i < n; i++) {
 			pattern[i] = (i * k) % n < k;
 		}
-
 		return pattern;
 	}
 
 	/**
-	 * Get or generate cached base Euclidean pattern for a row (without rotation)
+	 * Get or generate cached Euclidean pattern for a row
 	 * @param {number} index - Row index
-	 * @param {number} notes - Notes value (48-bit, but using last 32 bits)
-	 *   - Bits 31-24 (most significant byte): Total Steps (8 bits, 0-255)
-	 *   - Bits 23-16 (2nd byte): Total Pulses (8 bits, 0-255)
-	 *   - Bits 15-8 (3rd byte): Initial Rotation (8 bits, 0-255, treated as signed -128 to 127)
-	 *   - Bits 7-0 (4th byte): Rotation Increment (8 bits, 0-255, treated as signed -128 to 127)
-	 * @returns {{pattern: boolean[], totalSteps: number, pulses: number, initialRotation: number, rotationIncrement: number}|null}
+	 * @param {number} notes - Notes value (bits 31-24: steps, 23-16: pulses, 15-8: initial rotation, 7-0: rotation increment)
+	 * @returns {{pattern: boolean[], stepsPerCycle: number, pulsesPerCycle: number, initialRotation: number, rotationIncrement: number}|null}
 	 */
 	getEuclideanPattern(index, notes) {
-		const totalSteps = (notes >> 24) & 0xff;
+		const stepsPerCycle = (notes >> 24) & 0xff;
 
-		if (totalSteps === 0) {
-			return null;
-		}
+		if (stepsPerCycle === 0) return null;
 
-		const pulses = (notes >> 16) & 0xff;
-
+		const pulsesPerCycleRaw = (notes >> 16) & 0xff;
+		const pulsesPerCycle = Math.max(0, Math.min(stepsPerCycle, pulsesPerCycleRaw));
 		const initialRotationRaw = (notes >> 8) & 0xff;
 		const initialRotation = initialRotationRaw > 127 ? 128 - initialRotationRaw : initialRotationRaw;
-
 		const rotationIncrementRaw = notes & 0xff;
 		const rotationIncrement = rotationIncrementRaw > 127 ? 128 - rotationIncrementRaw : rotationIncrementRaw;
-
-		const effectivePulses = Math.max(0, Math.min(totalSteps, pulses));
 
 		const cached = this.euclideanCache.get(index);
 		if (
 			cached &&
-			cached.totalSteps === totalSteps &&
-			cached.pulses === effectivePulses &&
+			cached.stepsPerCycle === stepsPerCycle &&
+			cached.pulsesPerCycle === pulsesPerCycle &&
 			cached.initialRotation === initialRotation &&
 			cached.rotationIncrement === rotationIncrement
 		) {
 			return cached;
 		}
 
-		const pattern = this.generateEuclideanPattern(totalSteps, effectivePulses);
+		const pattern = this.generateEuclideanPattern(stepsPerCycle, pulsesPerCycle);
 
-		const cacheEntry = {
-			pattern: pattern,
-			totalSteps: totalSteps,
-			pulses: effectivePulses,
-			initialRotation: initialRotation,
-			rotationIncrement: rotationIncrement,
-		};
+		const cacheEntry = { pattern, stepsPerCycle, pulsesPerCycle, initialRotation, rotationIncrement };
 		this.euclideanCache.set(index, cacheEntry);
 
 		return cacheEntry;
@@ -215,14 +181,10 @@ export class SamplePlayer {
 
 	/**
 	 * Check if a step is active using Euclidean sequencer
-	 * @param {number} index - Row index (for caching)
-	 * @param {number} notes - Notes value (48-bit, but using last 32 bits)
-	 *   - Bits 31-24 (most significant byte): Total Steps (8 bits, 0-255)
-	 *   - Bits 23-16 (2nd byte): Total Pulses (8 bits, 0-255)
-	 *   - Bits 15-8 (3rd byte): Initial Rotation (8 bits, 0-255, treated as signed -128 to 127)
-	 *   - Bits 7-0 (4th byte): Rotation Increment (8 bits, 0-255, treated as signed -128 to 127)
-	 * @param {number} tickCount - Current tick count from the clock
-	 * @param {number} modeSettings - Mode-specific settings (unused for euclidean mode)
+	 * @param {number} index - Row index
+	 * @param {number} notes - Notes value (bits 31-24: steps, 23-16: pulses, 15-8: initial rotation, 7-0: rotation increment)
+	 * @param {number} tickCount - Current tick count
+	 * @param {number} modeSettings - Mode settings (bit 4: enable, bit 3: skip/play, bits 2-0: nth note)
 	 * @returns {boolean}
 	 */
 	isStepActiveEuclidean(index, notes, tickCount, modeSettings) {
@@ -230,23 +192,36 @@ export class SamplePlayer {
 
 		if (cacheEntry === null) return false;
 
-		const { pattern, totalSteps, initialRotation, rotationIncrement } = cacheEntry;
+		const { pattern, stepsPerCycle, pulsesPerCycle, initialRotation, rotationIncrement } = cacheEntry;
 
-		const repeats = Math.floor(tickCount / totalSteps);
-		const currentRotation = initialRotation + rotationIncrement * repeats;
+		const elapsedCycles = Math.floor(tickCount / stepsPerCycle);
+		const rotation = (initialRotation + rotationIncrement * elapsedCycles) % stepsPerCycle;
+		const stepIdx = (tickCount + stepsPerCycle - rotation) % stepsPerCycle;
+		const isActive = pattern[stepIdx];
 
-		const mappedIndex = tickCount % totalSteps;
-		const rotatedIndex = (mappedIndex - currentRotation + totalSteps) % totalSteps;
-		const isActive = pattern[rotatedIndex];
+		const isSkipEnabled = (modeSettings >> 4) & 0b1;
+		if (!(isSkipEnabled && isActive)) return isActive;
 
-		return isActive;
+		const isSkipMode = !!((modeSettings >> 3) & 0b1);
+		const nthNote = (modeSettings & 0b111) + 1;
+
+		// Calculate how many active steps have occurred overall in prior cycles.
+		let noteIdx = elapsedCycles * pulsesPerCycle;
+		// Add the number of active steps already played in this cycle.
+		const cycleProgress = tickCount % stepsPerCycle;
+		for (let i = 0; i <= cycleProgress; ++i) {
+			const rotatedIdx = (i + stepsPerCycle - rotation) % stepsPerCycle;
+			if (pattern[rotatedIdx]) ++noteIdx;
+		}
+		const isNthStep = noteIdx % nthNote === 0;
+		return isSkipMode === isNthStep;
 	}
 
 	/**
 	 * Process a tick - check all rows and play samples for active steps
 	 * @param {number} tickCount - Current tick count
-	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to their current values
-	 * @param {number} masterVolume - Master volume level (0-127, optional, defaults to 127)
+	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to values
+	 * @param {number} masterVolume - Master volume (0-127, default 127)
 	 */
 	async processTick(tickCount, rowValues, masterVolume = 127) {
 		if (this.audioContext.state === 'suspended') {
