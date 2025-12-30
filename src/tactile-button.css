@@ -1,0 +1,99 @@
+tactile-button {
+	display: inline-block;
+	--button-color: black;
+	--button-size: clamp(0.2in, 4vw, 0.4in);
+	--casing-thickness: calc(var(--button-size) * 0.1);
+	--button-recess: calc(var(--button-size) * 0.04);
+	--rivet-size: calc(var(--button-size) * 0.08);
+	--rivet-inset: calc(var(--button-size) * 0.175);
+}
+
+tactile-button .tact-container {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+tactile-button .tact-casing-outer {
+	position: relative;
+	width: var(--button-size);
+	height: var(--button-size);
+	background: #1a1a1a;
+	border-radius: calc(var(--button-size) * 0.125);
+	box-shadow: 0 0.01in 0.02in rgba(0, 0, 0, 0.3);
+	padding: var(--casing-thickness);
+}
+
+tactile-button .tact-casing-inner {
+	display: grid;
+	place-items: center;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(135deg, #c0c0c0 0%, #a0a0a0 100%);
+	border-radius: calc(var(--button-size) * 0.05);
+	box-shadow: inset 0 0.005in 0.01in rgba(255, 255, 255, 0.5), inset 0 -0.005in 0.01in rgba(0, 0, 0, 0.3);
+	padding: var(--button-recess);
+}
+
+tactile-button .tact-button {
+	width: 75%;
+	height: 75%;
+	padding: 0;
+	border: none;
+	background: var(--button-color);
+	border-radius: 50%;
+	box-shadow: inset 0 0.01in 0.02in rgba(255, 255, 255, 0.125), 0 0.005in 0.01in rgba(0, 0, 0, 0.2);
+	transition: transform 50ms ease, box-shadow 50ms ease;
+	cursor: pointer;
+	user-select: none;
+}
+
+tactile-button .tact-button:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+tactile-button .tact-button:active {
+	transform: translateY(0.01in);
+	box-shadow: inset 0 0.01in 0.02in rgba(0, 0, 0, 0.3), 0 0.002in 0.005in rgba(0, 0, 0, 0.1);
+}
+tactile-button .tact-button:focus-visible {
+	outline: 0.1em solid rgba(255, 255, 255, 0.8);
+	outline-offset: 0.2em;
+	border-radius: 0.05in;
+}
+
+/* Rivets */
+tactile-button .tact-casing-outer::before,
+tactile-button .tact-casing-outer::after,
+tactile-button .tact-casing-inner::before,
+tactile-button .tact-casing-inner::after {
+	content: '';
+	position: absolute;
+	width: var(--rivet-size);
+	height: var(--rivet-size);
+	background: #1a1a1a;
+	border-radius: 99px;
+}
+tactile-button .tact-casing-outer::before {
+	top: var(--rivet-inset);
+	left: var(--rivet-inset);
+}
+tactile-button .tact-casing-outer::after {
+	top: var(--rivet-inset);
+	right: var(--rivet-inset);
+}
+tactile-button .tact-casing-inner::before {
+	bottom: var(--rivet-inset);
+	left: var(--rivet-inset);
+}
+tactile-button .tact-casing-inner::after {
+	bottom: var(--rivet-inset);
+	right: var(--rivet-inset);
+}
+
+tactile-button .tact-label {
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	pointer-events: none;
+}

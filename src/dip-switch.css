@@ -10,7 +10,6 @@ dip-switch {
 
 dip-switch .fieldset {
 	position: relative;
-	font-size: 6cqw;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
@@ -84,7 +83,7 @@ dip-switch .switch::after {
 	aspect-ratio: 1;
 	border-radius: 1cqw;
 	background: #fff;
-	transform: translateY(13.5cqw);
+	transform: translateY(14cqw);
 	transition: transform 120ms ease;
 }
 
@@ -93,8 +92,8 @@ dip-switch .switch:has(.input:checked)::after {
 }
 
 dip-switch .switch:has(.input:focus-visible)::before {
-	outline: 0.143em solid rgba(255, 255, 255, 0.8);
-	outline-offset: 0.143em;
+	outline: 0.8cqw solid rgba(255, 255, 255, 0.8);
+	outline-offset: 0.8cqw;
 }
 
 dip-switch.red-switch .fieldset {

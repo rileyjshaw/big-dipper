@@ -27,7 +27,7 @@ body {
 
 #app {
 	height: 100%;
-	width: 100%;
+	width: min(100%, 74/55 * 100dvh);
 	margin: 0 auto;
 	display: grid;
 	place-items: center;
@@ -35,11 +35,12 @@ body {
 }
 
 .circuit-board {
-	height: min(100%, 109/157 * 100cqw);
-	width: min(100%, 157/109 * 100cqh);
+	height: min(100%, 55/74 * 100dvw);
+	width: 100%;
 	display: grid;
 	grid-template-columns: repeat(6, 1fr);
-	gap: 0.5cqw;
+	gap: 0.25cqw;
+	font-size: 1cqw;
 }
 
 .loading-overlay {
@@ -80,4 +81,11 @@ body {
 
 .loading-text {
 	margin-top: 0.5rem;
+}
+
+.button-row {
+	display: flex;
+	gap: 1em;
+	justify-content: flex-end;
+	grid-column: 1/-1;
 }

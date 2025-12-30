@@ -1,5 +1,6 @@
 import './dip-switch.js';
 import './dip-switch-group.js';
+import './tactile-button.js';
 import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
 import { CrossTabSync } from './cross-tab-sync.js';
@@ -10,7 +11,7 @@ const numRows = 9;
 const defaultValues = [
 	{
 		settings: 0b0111100011000000,
-		notes: 0b10111111000000000000000000000010,
+		notes: 0b10111111000000000000000010111100,
 		labels: ['BPM', 'BPM Mod', 'Volume', 'MIDI Scale', 'Preset', 'Play'],
 	},
 	{ notes: 0b10001000100010001000100010000000 },
@@ -23,7 +24,7 @@ const defaultValues = [
 	{ notes: 0b0 },
 ].map((row, i) => (i ? { ...row, settings: (i - 1) << 8, labels: ['Instrument', 'Mode'] } : row));
 
-document.querySelector('.circuit-board').innerHTML = `
+document.querySelector('.circuit-board').innerHTML += `
       ${Array.from(
 			{ length: numRows },
 			(_, i) => `
@@ -384,15 +385,6 @@ const handleKeyDown = e => {
 			ArrowDown: 'down',
 		};
 		navigateByte(directionMap[e.key]);
-		return;
-	}
-
-	if (e.key === 'Tab' && selectedByte && !e.ctrlKey && !e.altKey) {
-		const byteElement = getSelectedByteElement();
-		if (byteElement) {
-			e.preventDefault();
-			byteElement.focusFirstBit();
-		}
 		return;
 	}
 
