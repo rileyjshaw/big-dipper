@@ -5,24 +5,14 @@ import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
 import { CrossTabSync } from './cross-tab-sync.js';
 import { MidiOutput } from './midi-output.js';
+import { initializePresetSystem } from './preset-controller.js';
 
 const numRows = 9;
 
-const defaultValues = [
-	{
-		settings: 0b0111100011000000,
-		notes: 0b10111110,
-		labels: ['BPM', 'BPM Mod', 'MIDI Scale', 'Preset', 'Play'],
-	},
-	{ notes: 0b10001000100010001000100010000000 },
-	{ notes: 0b1000 },
-	{ notes: 0b100000000000000010000000 },
-	{ notes: 0b1 },
-	{ notes: 0b10000000000000001000000000000000 },
-	{ notes: 0b100000000000000010000000 },
-	{ notes: 0b10000000000000101000100000100000 },
-	{ notes: 0b0 },
-].map((row, i) => (i ? { ...row, settings: (i - 1) << 8, labels: ['Instrument', 'Mode'] } : row));
+const rowLabels = [
+	['BPM', 'BPM Mod', 'MIDI Scale', 'Preset', 'Play'],
+	['Instrument', 'Mode'],
+];
 
 document.querySelector('.circuit-board').innerHTML += `
       ${Array.from(
@@ -72,23 +62,19 @@ function getAllRowGroups() {
 }
 
 getAllRowGroups().forEach((group, i) => {
-	const value = defaultValues[i];
+	const labels = rowLabels[i ? 1 : 0];
+	if (!labels) return;
+
 	const isSettingsRow = i === 0;
 	const numBytes = isSettingsRow ? 5 : 6;
 
 	for (let j = 0; j < numBytes; ++j) {
 		const switchEl = group.getByte(j);
-		if (!value || !switchEl) continue;
-		const label = value.labels?.[j];
-		let bits = 0;
-		if (j < 2) bits = value.settings >>> ((1 - j) * 8);
-		else {
-			const shiftAmount = isSettingsRow ? (4 - j) * 8 : (5 - j) * 8;
-			bits = value.notes >>> shiftAmount;
-		}
-
-		if (bits) switchEl.value = bits & 0xff;
+		if (!switchEl) continue;
+		const label = labels[j];
 		if (label) switchEl.label = label;
+		// Set default value for PLAY byte in settings row.
+		if (isSettingsRow && j === 4) switchEl.value = 0b10111110;
 	}
 });
 
@@ -578,7 +564,7 @@ const getAllRowValues = () => {
 	return cachedRowValues;
 };
 
-updateRowValuesCache();
+initializePresetSystem(getAllRowGroups, setRow, updateRowValuesCache);
 
 const extractVolumeSettings = () => {
 	const setRowValue = setRow.value;

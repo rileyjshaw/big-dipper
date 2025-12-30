@@ -23,17 +23,11 @@ class TactileButton extends HTMLElement {
 		this._button = this.querySelector('.tact-button');
 		this._label = this.querySelector('.tact-label');
 
-		this._button.addEventListener('click', () => {
-			if (!this.disabled) {
-				this.dispatchEvent(new Event('click', { bubbles: true }));
-			}
-		});
-
 		this._updateColor();
 		this._updateDisabled();
 	}
 
-	attributeChangedCallback(name, oldValue, newValue) {
+	attributeChangedCallback(name, _oldValue, _newValue) {
 		if (!this._container) return;
 
 		if (name === 'color') {
