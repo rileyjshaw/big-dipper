@@ -1,7 +1,7 @@
 tactile-button {
 	display: inline-block;
 	--button-color: black;
-	--button-size: clamp(0.2in, 4vw, 0.4in);
+	--button-size: 25cqw;
 	--casing-thickness: calc(var(--button-size) * 0.1);
 	--button-recess: calc(var(--button-size) * 0.04);
 	--rivet-size: calc(var(--button-size) * 0.08);

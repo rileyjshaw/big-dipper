@@ -11,8 +11,8 @@ const numRows = 9;
 const defaultValues = [
 	{
 		settings: 0b0111100011000000,
-		notes: 0b10111111000000000000000010111100,
-		labels: ['BPM', 'BPM Mod', 'Volume', 'MIDI Scale', 'Preset', 'Play'],
+		notes: 0b10111110,
+		labels: ['BPM', 'BPM Mod', 'MIDI Scale', 'Preset', 'Play'],
 	},
 	{ notes: 0b10001000100010001000100010000000 },
 	{ notes: 0b1000 },
@@ -28,7 +28,7 @@ document.querySelector('.circuit-board').innerHTML += `
       ${Array.from(
 			{ length: numRows },
 			(_, i) => `
-        <dip-switch-group${i === 0 ? ' data-settings' : ''}></dip-switch-group>
+        <dip-switch-group${i === 0 ? ' data-settings class="settings-row"' : ''}></dip-switch-group>
       `
 		).join('')}
 `;
@@ -73,14 +73,19 @@ function getAllRowGroups() {
 
 getAllRowGroups().forEach((group, i) => {
 	const value = defaultValues[i];
+	const isSettingsRow = i === 0;
+	const numBytes = isSettingsRow ? 5 : 6;
 
-	for (let j = 0; j < 6; ++j) {
+	for (let j = 0; j < numBytes; ++j) {
 		const switchEl = group.getByte(j);
 		if (!value || !switchEl) continue;
 		const label = value.labels?.[j];
 		let bits = 0;
 		if (j < 2) bits = value.settings >>> ((1 - j) * 8);
-		else bits = value.notes >>> ((5 - j) * 8);
+		else {
+			const shiftAmount = isSettingsRow ? (4 - j) * 8 : (5 - j) * 8;
+			bits = value.notes >>> shiftAmount;
+		}
 
 		if (bits) switchEl.value = bits & 0xff;
 		if (label) switchEl.label = label;
@@ -105,7 +110,9 @@ window.setSelectedByteFromElement = byteElement => {
 	const groups = getAllRowGroups();
 	for (let rowIndex = 0; rowIndex < groups.length; rowIndex++) {
 		const group = groups[rowIndex];
-		for (let byteIndex = 0; byteIndex < 6; byteIndex++) {
+		const isSettingsRow = rowIndex === 0;
+		const numBytes = isSettingsRow ? 5 : 6;
+		for (let byteIndex = 0; byteIndex < numBytes; byteIndex++) {
 			if (group.getByte(byteIndex) === byteElement) {
 				setSelectedByte(rowIndex, byteIndex);
 				return;
@@ -152,7 +159,9 @@ const setSelectedByte = (rowIndex, byteIndex) => {
 	const groups = getAllRowGroups();
 	if (rowIndex < 0 || rowIndex >= groups.length) return;
 	const group = groups[rowIndex];
-	if (!group || byteIndex < 0 || byteIndex >= 6) return;
+	const isSettingsRow = rowIndex === 0;
+	const maxByteIndex = isSettingsRow ? 5 : 6;
+	if (!group || byteIndex < 0 || byteIndex >= maxByteIndex) return;
 
 	selectedByte = { rowIndex, byteIndex };
 	const byte = group.getByte(byteIndex);
@@ -169,17 +178,19 @@ const navigateByte = direction => {
 
 	const groups = getAllRowGroups();
 	const numRows = groups.length;
-	const bytesPerRow = 6;
 
 	let newRowIndex = selectedByte.rowIndex;
 	let newByteIndex = selectedByte.byteIndex;
+
+	const isSettingsRow = newRowIndex === 0;
+	const bytesPerRow = isSettingsRow ? 5 : 6;
 
 	switch (direction) {
 		case 'left':
 			newByteIndex--;
 			if (newByteIndex < 0) {
-				newByteIndex = bytesPerRow - 1;
 				newRowIndex--;
+				newByteIndex = newRowIndex ? 5 : 4;
 				if (newRowIndex < 0) newRowIndex = numRows - 1;
 			}
 			break;
@@ -193,11 +204,11 @@ const navigateByte = direction => {
 			break;
 		case 'up':
 			newRowIndex--;
-			if (newRowIndex < 0) newRowIndex = numRows - 1;
+			if (newRowIndex < 0 || (newRowIndex === 0 && newByteIndex === 5)) newRowIndex = numRows - 1;
 			break;
 		case 'down':
 			newRowIndex++;
-			if (newRowIndex >= numRows) newRowIndex = 0;
+			if (newRowIndex >= numRows) newRowIndex = newByteIndex === 5 ? 1 : 0;
 			break;
 	}
 
@@ -572,10 +583,11 @@ updateRowValuesCache();
 const extractVolumeSettings = () => {
 	const setRowValue = setRow.value;
 	const notes = setRowValue.notes || 0;
-	const volumeByte = (notes >> 24) & 0xff;
-	const isOn = (volumeByte >> 7) & 0b1;
-	const volume = volumeByte & 0x7f; // Bits 6-0 (0-127)
-	return isOn * volume;
+	const playByte = (notes >> 0) & 0xff;
+	const isOn = (playByte >> 7) & 0b1;
+	const volumeRaw = (playByte >> 1) & 0b111111;
+	const volume = volumeRaw + 1; // Convert 0-63 to 1-64
+	return (isOn * volume) / 64;
 };
 
 const handleTick = async (tickCount, settings, isLeader = false) => {

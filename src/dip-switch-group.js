@@ -10,8 +10,9 @@ class DipSwitchGroup extends HTMLElement {
 		if (this.querySelector('dip-switch')) return;
 
 		const isSetRow = this.hasAttribute('data-settings');
+		const numBytes = isSetRow ? 5 : 6;
 
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < numBytes; i++) {
 			const switchEl = document.createElement('dip-switch');
 			if (isSetRow || i < 2) {
 				switchEl.classList.add('red-switch');
@@ -48,7 +49,7 @@ class DipSwitchGroup extends HTMLElement {
 
 	/**
 	 * Get a specific byte (dip-switch) element by index
-	 * @param {number} byteIndex - Index of the byte (0-5)
+	 * @param {number} byteIndex - Index of the byte (0-5 for instrument rows, 0-4 for settings row)
 	 * @returns {DipSwitch|null}
 	 */
 	getByte(byteIndex) {
@@ -57,7 +58,7 @@ class DipSwitchGroup extends HTMLElement {
 
 	/**
 	 * Get all byte values as an array
-	 * @returns {number[]} Array of 6 byte values
+	 * @returns {number[]} Array of byte values (5 for settings row, 6 for instrument rows)
 	 */
 	getAllBytes() {
 		return this._switches.map(switchEl => switchEl.value);

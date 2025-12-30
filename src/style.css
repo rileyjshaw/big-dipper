@@ -22,20 +22,19 @@
 body {
 	margin: 0;
 	height: 100dvh;
-	padding: 12px;
 }
 
 #app {
 	height: 100%;
-	width: min(100%, 74/55 * 100dvh);
+	width: min(100%, 652000/442217 * 100dvh);
 	margin: 0 auto;
 	display: grid;
 	place-items: center;
-	container-type: size;
+	container-type: inline-size;
 }
 
 .circuit-board {
-	height: min(100%, 55/74 * 100dvw);
+	height: min(100%, 442217/652000 * 100cqw);
 	width: 100%;
 	display: grid;
 	grid-template-columns: repeat(6, 1fr);
@@ -83,9 +82,16 @@ body {
 	margin-top: 0.5rem;
 }
 
-.button-row {
+.settings-row {
+	grid-row: 1;
+	grid-column: 1 / -2;
+}
+
+.buttons {
 	display: flex;
 	gap: 1em;
 	justify-content: flex-end;
-	grid-column: 1/-1;
+	align-items: flex-start;
+	grid-column: -2 / -1;
+	container-type: inline-size;
 }

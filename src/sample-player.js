@@ -52,9 +52,9 @@ export class SamplePlayer {
 	 * @param {number} soundBank - Sound bank index (0-7)
 	 * @param {number} note - Note number (0-7)
 	 * @param {number} time - Audio context time to play at (optional)
-	 * @param {number} volume - Volume level (0-127, optional)
+	 * @param {number} volume - Volume level (0-1, optional)
 	 */
-	async playSample(soundBank, note, time = null, volume = 127) {
+	async playSample(soundBank, note, time = null, volume = 1) {
 		const key = `${soundBank}-${note}`;
 		const buffer = this.buffers.get(key);
 		if (!buffer) {
@@ -73,7 +73,7 @@ export class SamplePlayer {
 		source.buffer = buffer;
 
 		const gainNode = this.audioContext.createGain();
-		gainNode.gain.value = volume / 127;
+		gainNode.gain.value = volume;
 
 		source.connect(gainNode);
 		gainNode.connect(this.masterGainNode || this.audioContext.destination);
@@ -221,9 +221,9 @@ export class SamplePlayer {
 	 * Process a tick - check all rows and play samples for active steps
 	 * @param {number} tickCount - Current tick count
 	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to values
-	 * @param {number} masterVolume - Master volume (0-127, default 127)
+	 * @param {number} masterVolume - Master volume (0-1, default 1)
 	 */
-	async processTick(tickCount, rowValues, masterVolume = 127) {
+	async processTick(tickCount, rowValues, masterVolume = 1) {
 		if (this.audioContext.state === 'suspended') {
 			try {
 				await this.audioContext.resume();

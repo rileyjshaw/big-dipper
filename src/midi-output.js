@@ -81,7 +81,7 @@ export class MidiOutput {
 	}
 
 	/**
-	 * Extract scale settings from the 4th settings row byte (byte index 3)
+	 * Extract scale settings from the 3rd settings row byte (byte index 2)
 	 * @param {number} settingsRowNotes - The notes value from the settings row
 	 * @returns {{noteOffset: number, scaleIndex: number}}
 	 */
