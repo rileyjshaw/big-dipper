@@ -64,11 +64,9 @@ class DipSwitch extends HTMLElement {
 		this._syncHiddenInput();
 
 		this.addEventListener('mouseenter', () => {
-			if (window.isExpertModeActive && window.isExpertModeActive()) {
-				this.classList.add('expert-focus');
-				if (window.setSelectedByteFromElement) {
-					window.setSelectedByteFromElement(this);
-				}
+			this.classList.add('expert-focus');
+			if (window.setSelectedByteFromElement) {
+				window.setSelectedByteFromElement(this);
 			}
 		});
 

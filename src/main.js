@@ -86,15 +86,6 @@ getAllRowGroups().forEach((group, i) => {
 	}
 });
 
-const isExpertModeActive = () => {
-	const lastByte = setRow.getByte(5);
-	if (!lastByte) return false;
-	const byteValue = lastByte.value;
-	return ((byteValue >> 1) & 0b1) === 1;
-};
-
-window.isExpertModeActive = isExpertModeActive;
-
 const getSelectedByteElement = () => {
 	if (!selectedByte) return null;
 	const groups = getAllRowGroups();
@@ -110,8 +101,6 @@ const getSelectedByteType = () => {
 };
 
 window.setSelectedByteFromElement = byteElement => {
-	if (!isExpertModeActive()) return;
-
 	const groups = getAllRowGroups();
 	for (let rowIndex = 0; rowIndex < groups.length; rowIndex++) {
 		const group = groups[rowIndex];
@@ -318,8 +307,6 @@ const pasteBytes = () => {
 };
 
 const handleKeyboardShortcut = (key, event) => {
-	if (!isExpertModeActive()) return false;
-
 	const byteElement = getSelectedByteElement();
 	if (!byteElement) return false;
 
@@ -388,8 +375,6 @@ const highlightCells = byteIndices => {
 };
 
 const handleKeyDown = e => {
-	if (!isExpertModeActive()) return;
-
 	if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
 		e.preventDefault();
 		const directionMap = {
@@ -576,17 +561,6 @@ for (let i = 1; i <= 8; i++) {
 document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
 
-const handleSetRowChange = () => {
-	if (!isExpertModeActive() && selectedByte) {
-		const groups = getAllRowGroups();
-		const group = groups[selectedByte.rowIndex];
-		const byte = group?.getByte(selectedByte.byteIndex);
-		byte?.classList.remove('expert-focus');
-		selectedByte = null;
-	}
-	updateClockBPM();
-};
-
 let cachedRowValues = new Map();
 
 const updateRowValuesCache = () => {
@@ -671,7 +645,7 @@ async function initializeSequencer() {
 	});
 
 	updateClockBPM();
-	setRow.addEventListener('change', handleSetRowChange);
+	setRow.addEventListener('change', updateClockBPM);
 }
 
 async function updateClockBPM() {
