@@ -163,8 +163,8 @@ export function initializePresetSystem(getAllRowGroupsFn, setRow, updateRowValue
 			updateRowValuesCacheFn();
 		}
 	} else {
-		// Fall back to preset 1
-		loadPresetData(1, getAllRowGroupsFn);
+		// Fall back to preset 0
+		loadPresetData(0, getAllRowGroupsFn);
 		if (updateRowValuesCacheFn) {
 			updateRowValuesCacheFn();
 		}
