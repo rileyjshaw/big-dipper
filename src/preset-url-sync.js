@@ -118,4 +118,12 @@ export function setupURLSync(getAllRowGroupsFn, onChangeCallback) {
 		},
 		true
 	);
+
+	// Listen for URL hash changes (when user types new preset code in URL)
+	window.addEventListener('hashchange', () => {
+		const loaded = loadFromURL(getAllRowGroupsFn);
+		if (loaded && onChangeCallback) {
+			onChangeCallback();
+		}
+	});
 }
