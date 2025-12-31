@@ -46,6 +46,9 @@ tactile-button .tact-button {
 	transition: transform 50ms ease, box-shadow 50ms ease;
 	cursor: pointer;
 	user-select: none;
+	text-decoration: none;
+	color: inherit;
+	display: block;
 }
 
 tactile-button .tact-button:disabled {

@@ -1,5 +1,5 @@
 class TactileButton extends HTMLElement {
-	static observedAttributes = ['label', 'color', 'disabled'];
+	static observedAttributes = ['label', 'color', 'disabled', 'href'];
 
 	constructor() {
 		super();
@@ -8,11 +8,18 @@ class TactileButton extends HTMLElement {
 	connectedCallback() {
 		if (this._container) return;
 
+		const href = this.href;
+		const isLink = !!href;
+		const buttonTag = isLink ? 'a' : 'button';
+		const buttonAttrs = isLink
+			? `href="${href}" target="_blank" rel="nofollow noopener noreferrer"`
+			: 'type="button"';
+
 		this.innerHTML = `
 			<div class="tact-container">
 				<div class="tact-casing-outer">
 					<div class="tact-casing-inner">
-						<button class="tact-button" type="button"></button>
+						<${buttonTag} class="tact-button" ${buttonAttrs}></${buttonTag}>
 					</div>
 				</div>
 				${this.label ? `<span class="tact-label">${this.label}</span>` : ''}
@@ -36,6 +43,8 @@ class TactileButton extends HTMLElement {
 			this._updateLabel();
 		} else if (name === 'disabled') {
 			this._updateDisabled();
+		} else if (name === 'href') {
+			this._updateHref();
 		}
 	}
 
@@ -68,6 +77,19 @@ class TactileButton extends HTMLElement {
 		v ? this.setAttribute('disabled', '') : this.removeAttribute('disabled');
 	}
 
+	get href() {
+		return this.getAttribute('href') ?? '';
+	}
+
+	set href(v) {
+		if (v) {
+			this.setAttribute('href', v);
+		} else {
+			this.removeAttribute('href');
+		}
+		this._updateHref();
+	}
+
 	_updateColor() {
 		if (!this._button) return;
 		const color = this.color;
@@ -93,7 +115,42 @@ class TactileButton extends HTMLElement {
 
 	_updateDisabled() {
 		if (!this._button) return;
+		if (this._button.tagName === 'A') return; // Ignore disabled for links
 		this._button.disabled = this.disabled;
+	}
+
+	_updateHref() {
+		if (!this._container) return;
+		const href = this.href;
+		const isLink = !!href;
+		const currentIsLink = this._button?.tagName === 'A';
+
+		// Only rebuild if we need to switch between button and link
+		if (isLink !== currentIsLink) {
+			// Rebuild the component
+			const label = this.label;
+			const color = this.color;
+			const disabled = this.disabled;
+			this.innerHTML = '';
+			this._container = null;
+			this._button = null;
+			this._label = null;
+			this.connectedCallback();
+			// Restore state
+			if (label) this.label = label;
+			if (color) this.color = color;
+			if (disabled) this.disabled = disabled;
+		} else if (this._button && isLink) {
+			// Just update the href and rel attributes
+			this._button.href = href;
+			this._button.setAttribute('target', '_blank');
+			this._button.setAttribute('rel', 'nofollow noopener noreferrer');
+		} else if (this._button && !isLink) {
+			// Remove link attributes if switching back to button
+			this._button.removeAttribute('href');
+			this._button.removeAttribute('target');
+			this._button.removeAttribute('rel');
+		}
 	}
 }
 
