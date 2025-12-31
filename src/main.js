@@ -742,9 +742,13 @@ const preloadSamples = async () => {
 
 	const soundBanks = [
 		'drum - koan remnants',
-		'note - massive x astral float',
+		'drum - mp pt 4',
 		'drum - alix perez x eprom',
 		'note - noire felt',
+		'note - kontakt jazz guitar',
+		'note - scarbee 1 on the road',
+		'note - hypha spring time',
+		'note - kontakt castles burning',
 	];
 
 	try {
