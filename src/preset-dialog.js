@@ -97,9 +97,13 @@ export async function showPresetDialog(type, presetNumber) {
 		`;
 
 		if (type === 'load') {
-			message.textContent = `Are you sure you want to load preset ${presetNumber}? Unsaved changes will be overwritten.`;
+			message.textContent = `Are you sure you want to load preset ${
+				presetNumber + 1
+			}? Unsaved changes will be overwritten.`;
 		} else {
-			message.textContent = `Are you sure you want to save current settings to preset bank ${presetNumber}? Current preset will be overwritten.`;
+			message.textContent = `Are you sure you want to save current settings to preset bank ${
+				presetNumber + 1
+			}? Current preset will be overwritten.`;
 		}
 
 		// Create checkbox container
