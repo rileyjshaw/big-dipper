@@ -54,7 +54,6 @@ export class MidiOutput {
 				// Use the first available output
 				this.outputPort = outputs[0];
 				this.isInitialized = true;
-				console.log('MIDI output connected:', this.outputPort.name);
 				this.initializationPromise = null;
 				return true;
 			} catch (error) {
