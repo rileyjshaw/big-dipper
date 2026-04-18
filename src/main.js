@@ -19,7 +19,7 @@ document.querySelector('.circuit-board').innerHTML += `
 			{ length: numRows },
 			(_, i) => `
         <dip-switch-group${i === 0 ? ' data-settings class="settings-row"' : ''}></dip-switch-group>
-      `
+      `,
 		).join('')}
 `;
 
@@ -372,6 +372,7 @@ const highlightCells = byteIndices => {
 	});
 };
 
+let printFriendly = false;
 const handleKeyDown = e => {
 	if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
 		e.preventDefault();
@@ -386,6 +387,12 @@ const handleKeyDown = e => {
 	}
 
 	if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+		if ((e.key === 'p' || e.key === 'P') && !e.repeat) {
+			printFriendly = !printFriendly;
+			document.documentElement.classList.toggle('print-friendly', printFriendly);
+			e.preventDefault();
+			return;
+		}
 		const handled = handleKeyboardShortcut(e.key, e);
 		if (handled) {
 			e.preventDefault();
@@ -465,7 +472,7 @@ registerExpertShortcut(
 			const row = groups[selectedByte.rowIndex];
 			if (row) copyEntireRow(row);
 		}
-	}
+	},
 );
 
 registerExpertShortcut('v', () => {
@@ -498,7 +505,7 @@ registerExpertShortcut(
 			}
 			row.setAllBytes(bytes);
 		}
-	}
+	},
 );
 
 registerExpertShortcut(
@@ -527,7 +534,7 @@ registerExpertShortcut(
 			}
 			row.setAllBytes(bytes);
 		}
-	}
+	},
 );
 
 registerExpertShortcut('r', () => {
@@ -549,6 +556,13 @@ for (let i = 1; i <= 8; i++) {
 
 document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
+
+window.addEventListener('beforeprint', () => {
+	document.documentElement.classList.add('print-friendly');
+});
+window.addEventListener('afterprint', () => {
+	document.documentElement.classList.toggle('print-friendly', printFriendly);
+});
 
 let cachedRowValues = new Map();
 
@@ -597,7 +611,7 @@ const handleTick = async (tickCount, settings, isLeader = false) => {
 			rowValues,
 			settingsRowNotes,
 			samplePlayer.extractRowSettings.bind(samplePlayer),
-			samplePlayer.stepCheckers
+			samplePlayer.stepCheckers,
 		);
 	}
 };
@@ -609,7 +623,7 @@ document.addEventListener(
 			updateRowValuesCache();
 		}
 	},
-	true
+	true,
 );
 
 async function initializeSequencer() {
@@ -780,9 +794,9 @@ const preloadSamples = async () => {
 						.catch(error => {
 							console.error(
 								`Failed to preload sample for sound bank ${soundBank}, note ${note} from ${url}:`,
-								error
+								error,
 							);
-						})
+						}),
 				);
 			}
 		}

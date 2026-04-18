@@ -72,12 +72,6 @@ body {
 	margin-bottom: 1rem;
 }
 
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
 .loading-text {
 	margin-top: 0.5rem;
 }
@@ -94,4 +88,44 @@ body {
 	align-items: flex-start;
 	grid-column: -2 / -1;
 	container-type: inline-size;
+}
+
+.print-friendly {
+	background: #fff;
+	color: #000;
+}
+.print-friendly .buttons,
+.print-friendly .loading-overlay {
+	display: none;
+}
+.print-friendly dip-switch .fieldset,
+.print-friendly dip-switch.red-switch .fieldset {
+	background: #fff;
+	color: #000;
+	box-shadow: inset 0 0 0 0.15cqw #000;
+	filter: none !important;
+}
+.print-friendly dip-switch .legend {
+	color: #000;
+	opacity: 1;
+}
+.print-friendly dip-switch .legend::before {
+	display: none;
+}
+.print-friendly dip-switch .switch::before {
+	background: #fff;
+	box-shadow: inset 0 0 0 0.15cqw #000;
+}
+.print-friendly dip-switch .switch::after {
+	background: #fff;
+	box-shadow: inset 0 0 0 0.15cqw #000;
+}
+.print-friendly dip-switch .switch:has(.input:checked)::after {
+	background: #efefef;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
