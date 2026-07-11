@@ -2,6 +2,9 @@
  * Cross-tab synchronization for sequencer clock
  * Allows tabs with tempo=0 to follow the clock of tabs with tempo>0
  */
+
+const sharedPerformanceTime = () => performance.timeOrigin + performance.now();
+
 export class CrossTabSync {
 	constructor(clock) {
 		this.clock = clock;
@@ -37,7 +40,14 @@ export class CrossTabSync {
 			case 'tick':
 				if (this.isFollower && data.tabId === this.currentLeaderId) {
 					if (this.tickCallback) {
-						this.tickCallback(data.time, data.tickCount, data.settings);
+						// Re-anchor the shared deadline to this tab's audio clock.
+						// Subtracting transit time keeps followers aligned with the leader.
+						const audioContext = this.clock.audioContext;
+						const remainingDelay = Number.isFinite(data.scheduledAt)
+							? Math.max(0, (data.scheduledAt - sharedPerformanceTime()) / 1000)
+							: Math.max(0, data.delay || 0);
+						const time = audioContext ? audioContext.currentTime + remainingDelay : null;
+						this.tickCallback(time, data.tickCount, data.settings);
 					}
 				}
 				if (this.availableLeaders.has(data.tabId)) {
@@ -155,15 +165,21 @@ export class CrossTabSync {
 
 	/**
 	 * Broadcast a tick event at maximum rate
-	 * @param {number} time - Audio context time or performance time
+	 * @param {number} time - Audio context time the tick is scheduled to sound at
 	 * @param {number} tickCount - The tick count
 	 * @param {number} settings - The settings value for tempo calculation
 	 */
 	broadcastTick(time, tickCount, settings) {
 		if (this.isLeader && this.leaderSettings !== undefined) {
+			// AudioContext times aren't comparable across tabs. Convert to a
+			// shared performance deadline so the follower can subtract transit time.
+			const audioContext = this.clock.audioContext;
+			const delay = audioContext ? Math.max(0, time - audioContext.currentTime) : 0;
+			const scheduledAt = sharedPerformanceTime() + delay * 1000;
 			this.channel.postMessage({
 				type: 'tick',
-				data: { tabId: this.tabId, time, tickCount, settings },
+				// Keep delay for compatibility with tabs running the previous protocol.
+				data: { tabId: this.tabId, scheduledAt, delay, tickCount, settings },
 			});
 		}
 	}

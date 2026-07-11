@@ -8,6 +8,7 @@ export class SamplePlayer {
 		this.buffers = new Map();
 		this.euclideanCache = new Map();
 		this.masterGainNode = null;
+		this.pendingSources = new Set();
 		this.setupMasterGain();
 		// Checks if a step is active for a given step / mode / settings.
 		this.stepCheckers = [
@@ -79,7 +80,29 @@ export class SamplePlayer {
 		gainNode.connect(this.masterGainNode || this.audioContext.destination);
 
 		const playTime = time !== null ? time : this.audioContext.currentTime;
+		source.scheduledStartTime = playTime;
+		this.pendingSources.add(source);
+		source.onended = () => this.pendingSources.delete(source);
 		source.start(playTime);
+	}
+
+	/**
+	 * Stop sources scheduled in the future that haven't started sounding yet.
+	 * Called when the clock stops so notes queued in the lookahead window
+	 * don't play after the user stops playback.
+	 */
+	cancelScheduled() {
+		const now = this.audioContext.currentTime;
+		for (const source of this.pendingSources) {
+			if (source.scheduledStartTime > now) {
+				try {
+					source.stop();
+				} catch {
+					// Source may already be stopped.
+				}
+				this.pendingSources.delete(source);
+			}
+		}
 	}
 
 	/**
@@ -222,8 +245,9 @@ export class SamplePlayer {
 	 * @param {number} tickCount - Current tick count
 	 * @param {Map<number, {settings: number, notes: number}>} rowValues - Map of row indices to values
 	 * @param {number} masterVolume - Master volume (0-1, default 1)
+	 * @param {number} time - Audio context time to schedule playback at (optional)
 	 */
-	async processTick(tickCount, rowValues, masterVolume = 1) {
+	async processTick(tickCount, rowValues, masterVolume = 1, time = null) {
 		if (this.audioContext.state === 'suspended') {
 			try {
 				await this.audioContext.resume();
@@ -249,7 +273,7 @@ export class SamplePlayer {
 			const stepChecker = this.stepCheckers[settings.mode];
 			if (!stepChecker) continue;
 			if (stepChecker(index, value.notes || 0, tickCount, settings.modeSettings)) {
-				const playTime = this.audioContext.currentTime;
+				const playTime = time !== null ? time : this.audioContext.currentTime;
 				await this.playSample(settings.midiChannel, settings.note, playTime, masterVolume);
 			}
 		}

@@ -590,7 +590,7 @@ const extractVolumeSettings = () => {
 	return (isOn * volume) / 64;
 };
 
-const handleTick = async (tickCount, settings, isLeader = false) => {
+const handleTick = async (time, tickCount, settings, isLeader = false) => {
 	if (!samplePlayer) return;
 	const shouldPlay = (setRow.value.notes ?? 0) & 0b1;
 	if (!shouldPlay) return;
@@ -601,17 +601,24 @@ const handleTick = async (tickCount, settings, isLeader = false) => {
 
 	const masterVolume = extractVolumeSettings();
 	const rowValues = getAllRowValues();
-	await samplePlayer.processTick(effectiveTickCount, rowValues, masterVolume);
+	await samplePlayer.processTick(effectiveTickCount, rowValues, masterVolume, time);
 
 	// Process MIDI output (only if MIDI API is supported)
 	if (midiOutput && MidiOutput.isSupported()) {
 		const settingsRowNotes = setRow.value.notes ?? 0;
+		// Web MIDI timestamps use the performance.now() timebase, so convert
+		// the AudioContext-relative scheduling delay.
+		const midiTimestamp =
+			time !== null && clock.audioContext
+				? performance.now() + Math.max(0, time - clock.audioContext.currentTime) * 1000
+				: 0;
 		await midiOutput.processTick(
 			effectiveTickCount,
 			rowValues,
 			settingsRowNotes,
 			samplePlayer.extractRowSettings.bind(samplePlayer),
 			samplePlayer.stepCheckers,
+			midiTimestamp,
 		);
 	}
 };
@@ -645,7 +652,7 @@ async function initializeSequencer() {
 			crossTabSync.broadcastTick(time, tickCount, settings);
 		}
 
-		await handleTick(tickCount, settings, true);
+		await handleTick(time, tickCount, settings, true);
 	});
 
 	updateClockBPM();
@@ -685,6 +692,15 @@ async function updateClockBPM() {
 			});
 	} else if (!canPlay && clock.isRunning) {
 		clock.stop();
+		// Don't let notes queued in the lookahead window play after a local
+		// clock stops (including when this tab switches to follower mode).
+		samplePlayer?.cancelScheduled();
+		midiOutput?.cancelScheduled();
+	} else if (!shouldPlay) {
+		// Followers have no running local clock, but can still have notes queued
+		// from leader ticks when playback is switched off.
+		samplePlayer?.cancelScheduled();
+		midiOutput?.cancelScheduled();
 	}
 
 	if (crossTabSync) {
@@ -718,7 +734,7 @@ async function updateClockBPM() {
 					const effectiveSettings =
 						(leaderBaseTempo << 8) | (isMultiply ? 0x80 : 0x00) | (tempoFactorExponent << 5);
 
-					await handleTick(tickCount, effectiveSettings, false);
+					await handleTick(time, tickCount, effectiveSettings, false);
 				} else {
 					clock.tickCount = tickCount;
 				}

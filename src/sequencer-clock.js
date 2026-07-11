@@ -1,5 +1,18 @@
 /**
- * High-precision sequencer clock with drift correction
+ * High-precision sequencer clock with lookahead scheduling
+ *
+ * Instead of firing sounds when a timer callback happens to run (which is at
+ * the mercy of main-thread jitter, GC pauses, and timer clamping), a scheduler
+ * wakes up every SCHEDULER_INTERVAL_MS and schedules every tick that falls
+ * within the next LOOKAHEAD_SECONDS at an exact AudioContext timestamp.
+ * Listeners receive that timestamp and pass it to the sample-accurate Web
+ * Audio scheduler (source.start(time)), so timer jitter only has to stay
+ * under the lookahead window to be inaudible.
+ *
+ * The scheduler timer runs in a Web Worker because worker timers are exempt
+ * from the aggressive setTimeout throttling applied to backgrounded tabs —
+ * important since other tabs can follow this one's clock.
+ *
  * BPM is determined by bits in the SET row:
  * - First byte (bits 15-8): Tempo value (0-255)
  * - Second byte (bits 7-0):
@@ -8,18 +21,35 @@
  *   - Bits 4-0: Unused
  * BPM = (base tempo) times/divided by (2^n) / 4
  */
+
+const LOOKAHEAD_SECONDS = 0.1;
+const SCHEDULER_INTERVAL_MS = 25;
+
+const SCHEDULER_WORKER_SOURCE = `
+	let intervalId = null;
+	onmessage = e => {
+		if (e.data.type === 'start') {
+			clearInterval(intervalId);
+			intervalId = setInterval(() => postMessage('tick'), e.data.interval);
+			postMessage('tick');
+		} else if (e.data.type === 'stop') {
+			clearInterval(intervalId);
+			intervalId = null;
+		}
+	};
+`;
+
 export class SequencerClock {
 	constructor() {
 		this.audioContext = null;
 		this.isRunning = false;
 		this.currentBPM = 120;
-		this.tickInterval = 0;
+		this.tickIntervalSeconds = 0;
 		this.listeners = new Set();
-		this.timeoutId = null;
-		this.startTime = 0;
-		this.expectedTickTime = 0;
+		this.nextTickTime = 0;
 		this.tickCount = 0;
 		this.isFollowingExternal = false;
+		this.schedulerWorker = null;
 	}
 
 	/**
@@ -67,14 +97,14 @@ export class SequencerClock {
 	}
 
 	/**
-	 * Calculate tick interval in milliseconds from BPM
+	 * Calculate tick interval in seconds from BPM
 	 * Each tick represents a sixteenth note
 	 * @param {number} bpm - Beats per minute
-	 * @returns {number} Tick interval in milliseconds, or 0 if BPM is invalid
+	 * @returns {number} Tick interval in seconds, or 0 if BPM is invalid
 	 */
 	calculateTickInterval(bpm) {
 		if (bpm <= 0) return 0;
-		return ((60 / bpm) * 1000) / 4;
+		return 60 / bpm / 4;
 	}
 
 	/**
@@ -94,12 +124,21 @@ export class SequencerClock {
 		this.isRunning = true;
 		this.tickCount = 0;
 
-		this.tickInterval = this.calculateTickInterval(this.currentBPM);
+		this.tickIntervalSeconds = this.calculateTickInterval(this.currentBPM);
 
-		this.startTime = performance.now();
-		this.expectedTickTime = this.startTime;
+		this.nextTickTime = this.audioContext.currentTime + SCHEDULER_INTERVAL_MS / 1000;
 
-		this.scheduleNextTick();
+		if (!this.schedulerWorker) {
+			const blob = new Blob([SCHEDULER_WORKER_SOURCE], { type: 'application/javascript' });
+			const workerUrl = URL.createObjectURL(blob);
+			try {
+				this.schedulerWorker = new Worker(workerUrl);
+			} finally {
+				URL.revokeObjectURL(workerUrl);
+			}
+			this.schedulerWorker.onmessage = () => this.scheduleTicks();
+		}
+		this.schedulerWorker.postMessage({ type: 'start', interval: SCHEDULER_INTERVAL_MS });
 	}
 
 	/**
@@ -107,9 +146,8 @@ export class SequencerClock {
 	 */
 	stop() {
 		this.isRunning = false;
-		if (this.timeoutId) {
-			clearTimeout(this.timeoutId);
-			this.timeoutId = null;
+		if (this.schedulerWorker) {
+			this.schedulerWorker.postMessage({ type: 'stop' });
 		}
 	}
 
@@ -119,38 +157,42 @@ export class SequencerClock {
 	 */
 	setBPM(bpm) {
 		this.currentBPM = bpm;
-		this.tickInterval = this.calculateTickInterval(bpm);
+		this.tickIntervalSeconds = this.calculateTickInterval(bpm);
 	}
 
 	/**
-	 * Schedule the next tick with drift correction
+	 * Schedule all ticks that fall within the lookahead window
 	 */
-	scheduleNextTick() {
-		if (!this.isRunning) return;
+	scheduleTicks() {
+		if (!this.isRunning || this.tickIntervalSeconds <= 0) return;
 
-		const now = performance.now();
-		const drift = now - this.expectedTickTime;
+		const now = this.audioContext.currentTime;
 
-		this.expectedTickTime += this.tickInterval;
-		const delay = Math.max(0, this.tickInterval - drift);
+		// If the scheduler was starved for longer than the lookahead window
+		// (e.g. the tab was suspended), skip the missed ticks instead of
+		// bursting them all at once. Advancing tickCount keeps the pattern
+		// position moving as if the ticks had played.
+		if (this.nextTickTime < now) {
+			const missed = Math.ceil((now - this.nextTickTime) / this.tickIntervalSeconds);
+			this.nextTickTime += missed * this.tickIntervalSeconds;
+			this.tickCount += missed;
+		}
 
-		this.timeoutId = setTimeout(() => {
-			if (!this.isRunning) return;
-
-			this.emitTick();
-
-			this.scheduleNextTick();
-		}, delay);
+		while (this.nextTickTime < now + LOOKAHEAD_SECONDS) {
+			this.emitTick(this.nextTickTime);
+			this.nextTickTime += this.tickIntervalSeconds;
+		}
 	}
 
 	/**
 	 * Emit a tick event to all listeners
+	 * @param {number} time - AudioContext time at which the tick should sound
 	 */
-	emitTick() {
-		const now = this.audioContext ? this.audioContext.currentTime : performance.now() / 1000;
+	emitTick(time) {
 		this.listeners.forEach(listener => {
 			try {
-				listener(now, this.tickCount);
+				const result = listener(time, this.tickCount);
+				result?.catch?.(error => console.error('Error in clock listener:', error));
 			} catch (error) {
 				console.error('Error in clock listener:', error);
 			}
