@@ -37,7 +37,11 @@ export class CrossTabSync {
 			case 'tick':
 				if (this.isFollower && data.tabId === this.currentLeaderId) {
 					if (this.tickCallback) {
-						this.tickCallback(data.time, data.tickCount, data.settings);
+						// Re-anchor the leader's scheduling delay to this tab's own
+						// audio clock (AudioContext times aren't comparable across tabs).
+						const audioContext = this.clock.audioContext;
+						const time = audioContext ? audioContext.currentTime + (data.delay || 0) : null;
+						this.tickCallback(time, data.tickCount, data.settings);
 					}
 				}
 				if (this.availableLeaders.has(data.tabId)) {
@@ -155,15 +159,19 @@ export class CrossTabSync {
 
 	/**
 	 * Broadcast a tick event at maximum rate
-	 * @param {number} time - Audio context time or performance time
+	 * @param {number} time - Audio context time the tick is scheduled to sound at
 	 * @param {number} tickCount - The tick count
 	 * @param {number} settings - The settings value for tempo calculation
 	 */
 	broadcastTick(time, tickCount, settings) {
 		if (this.isLeader && this.leaderSettings !== undefined) {
+			// Send how far in the future the tick is scheduled rather than the
+			// raw time, since each tab's AudioContext has its own timebase.
+			const audioContext = this.clock.audioContext;
+			const delay = audioContext ? Math.max(0, time - audioContext.currentTime) : 0;
 			this.channel.postMessage({
 				type: 'tick',
-				data: { tabId: this.tabId, time, tickCount, settings },
+				data: { tabId: this.tabId, delay, tickCount, settings },
 			});
 		}
 	}

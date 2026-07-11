@@ -119,8 +119,9 @@ export class MidiOutput {
 	 * @param {number} channel - MIDI channel (0-15)
 	 * @param {number} note - MIDI note number (0-127)
 	 * @param {number} velocity - Velocity (0-127, default 127)
+	 * @param {number} timestamp - DOMHighResTimeStamp to schedule the send at (optional)
 	 */
-	sendNoteOn(channel, note, velocity = 127) {
+	sendNoteOn(channel, note, velocity = 127, timestamp = 0) {
 		if (!this.outputPort) return;
 
 		const channelByte = 0x90 | (channel & 0x0f); // Note on for channel
@@ -128,7 +129,7 @@ export class MidiOutput {
 		const velocityByte = velocity & 0x7f;
 
 		try {
-			this.outputPort.send([channelByte, noteByte, velocityByte]);
+			this.outputPort.send([channelByte, noteByte, velocityByte], timestamp);
 		} catch (error) {
 			console.error('Error sending MIDI note on:', error);
 		}
@@ -138,15 +139,16 @@ export class MidiOutput {
 	 * Send a MIDI note off message
 	 * @param {number} channel - MIDI channel (0-15)
 	 * @param {number} note - MIDI note number (0-127)
+	 * @param {number} timestamp - DOMHighResTimeStamp to schedule the send at (optional)
 	 */
-	sendNoteOff(channel, note) {
+	sendNoteOff(channel, note, timestamp = 0) {
 		if (!this.outputPort) return;
 
 		const channelByte = 0x80 | (channel & 0x0f); // Note off for channel
 		const noteByte = note & 0x7f;
 
 		try {
-			this.outputPort.send([channelByte, noteByte, 0]);
+			this.outputPort.send([channelByte, noteByte, 0], timestamp);
 		} catch (error) {
 			console.error('Error sending MIDI note off:', error);
 		}
@@ -159,8 +161,9 @@ export class MidiOutput {
 	 * @param {number} settingsRowNotes - The notes value from the settings row
 	 * @param {Function} extractRowSettings - Function to extract row settings
 	 * @param {Function[]} stepCheckers - Array of step checker functions
+	 * @param {number} timestamp - DOMHighResTimeStamp to schedule the sends at (optional, 0 = immediately)
 	 */
-	async processTick(tickCount, rowValues, settingsRowNotes, extractRowSettings, stepCheckers) {
+	async processTick(tickCount, rowValues, settingsRowNotes, extractRowSettings, stepCheckers, timestamp = 0) {
 		if (!this.isMidiEnabled(settingsRowNotes)) {
 			// Send note off for all active notes when MIDI is disabled
 			this.allNotesOff();
@@ -207,7 +210,7 @@ export class MidiOutput {
 
 				// If this note wasn't active before, send note on
 				if (!this.activeNotes.has(noteKey)) {
-					this.sendNoteOn(settings.midiChannel, midiNote, 127);
+					this.sendNoteOn(settings.midiChannel, midiNote, 127, timestamp);
 					this.activeNotes.set(noteKey, { channel: settings.midiChannel, note: midiNote });
 				}
 			}
@@ -216,7 +219,7 @@ export class MidiOutput {
 		// Send note off for notes that are no longer active
 		for (const [noteKey, noteData] of this.activeNotes.entries()) {
 			if (!currentlyActive.has(noteKey)) {
-				this.sendNoteOff(noteData.channel, noteData.note);
+				this.sendNoteOff(noteData.channel, noteData.note, timestamp);
 				this.activeNotes.delete(noteKey);
 			}
 		}
