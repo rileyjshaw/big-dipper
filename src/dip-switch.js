@@ -24,6 +24,10 @@ class DipSwitch extends HTMLElement {
 			label.className = 'switch';
 			label.innerHTML = `
         <input class="input" type="checkbox" data-bit="${8 - bit - 1}">
+        <svg class="switch-graphic" aria-hidden="true" focusable="false">
+          <rect class="switch-track" />
+          <rect class="switch-thumb" />
+        </svg>
         <span class="bit" aria-hidden="true">${bit + 1}</span>
       `;
 			this._row.append(label);

@@ -62,6 +62,7 @@ export async function showPresetDialog(type, presetNumber) {
 	return new Promise(resolve => {
 		// Create dialog overlay
 		const overlay = document.createElement('div');
+		overlay.className = 'preset-dialog-overlay';
 		overlay.style.cssText = `
 			position: fixed;
 			top: 0;
@@ -69,7 +70,6 @@ export async function showPresetDialog(type, presetNumber) {
 			right: 0;
 			bottom: 0;
 			background-color: rgba(0, 0, 0, 0.7);
-			display: flex;
 			align-items: center;
 			justify-content: center;
 			z-index: 10001;

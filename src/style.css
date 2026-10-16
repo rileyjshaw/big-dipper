@@ -90,19 +90,31 @@ body {
 	container-type: inline-size;
 }
 
+.preset-dialog-overlay {
+	display: flex;
+}
+
+@media print {
+	.preset-dialog-overlay {
+		display: none;
+	}
+}
+
 .print-friendly {
 	background: #fff;
 	color: #000;
 }
 .print-friendly .buttons,
-.print-friendly .loading-overlay {
+.print-friendly .loading-overlay,
+.print-friendly .preset-dialog-overlay {
 	display: none;
 }
 .print-friendly dip-switch .fieldset,
 .print-friendly dip-switch.red-switch .fieldset {
 	background: #fff;
 	color: #000;
-	box-shadow: inset 0 0 0 0.15cqw #000;
+	border: 0.15cqw solid #000;
+	box-shadow: none;
 	filter: none !important;
 }
 .print-friendly dip-switch .legend {
@@ -110,27 +122,26 @@ body {
 	opacity: 1;
 }
 .print-friendly dip-switch .legend::before {
-	display: none;
+	height: 0;
+	border-bottom: 2px solid #000;
 }
-.print-friendly dip-switch .switch::before {
-	background: #fff;
-	box-shadow: inset 0 0 0 0.15cqw #000;
+.print-friendly dip-switch .switch-graphic {
+	--track-stroke: max(0.15cqw, 0.5px);
+	--thumb-stroke: var(--track-stroke);
 }
-.print-friendly dip-switch .switch::after {
-	top: auto;
-	bottom: calc(1.5em + 1.5cqw);
-	width: 7cqw;
-	height: 7cqw;
-	background: #fff;
-	box-shadow: inset 0 0 0 0.15cqw #000;
+.print-friendly dip-switch .switch-track {
+	fill: #fff;
+	stroke: #000;
+}
+.print-friendly dip-switch .switch .switch-thumb {
+	y: calc(100% - 8.5cqw + var(--thumb-stroke) / 2);
 	transform: none;
 	transition: none;
 }
-.print-friendly dip-switch .switch:has(.input:checked)::after {
-	top: 1.5cqw;
-	bottom: auto;
-	background: #efefef;
-	transform: none !important;
+.print-friendly dip-switch .switch:has(.input:checked) .switch-thumb {
+	y: calc(1.5cqw + var(--thumb-stroke) / 2);
+	fill: #efefef;
+	transform: none;
 }
 
 @keyframes spin {
