@@ -66,6 +66,8 @@ dip-switch .input {
 
 /* Shared vector shapes keep fractional geometry consistent on screen and in print. */
 dip-switch .switch-graphic {
+	--thumb-size: 7cqw;
+	--thumb-inset: 1.25cqw;
 	--track-stroke: 0.5cqw;
 	--thumb-stroke: 0px;
 	display: block;
@@ -91,18 +93,17 @@ dip-switch .switch-track {
 }
 
 dip-switch .switch-thumb {
-	x: calc(50% - 3.5cqw + var(--thumb-stroke) / 2);
-	y: 1cqw;
-	width: calc(7cqw - var(--thumb-stroke));
-	height: calc(7cqw - var(--thumb-stroke));
+	x: calc(50% - var(--thumb-size) / 2 + var(--thumb-stroke) / 2);
+	y: calc(100% - var(--thumb-size) - var(--thumb-inset) + var(--thumb-stroke) / 2);
+	width: calc(var(--thumb-size) - var(--thumb-stroke));
+	height: calc(var(--thumb-size) - var(--thumb-stroke));
 	rx: calc(1cqw - var(--thumb-stroke) / 2);
 	stroke-width: var(--thumb-stroke);
-	transform: translateY(14cqw);
-	transition: transform 120ms ease;
+	transition: y 120ms ease;
 }
 
 dip-switch .switch:has(.input:checked) .switch-thumb {
-	transform: translateY(0);
+	y: calc(var(--thumb-inset) + var(--thumb-stroke) / 2);
 }
 
 dip-switch .switch:has(.input:focus-visible) .switch-graphic {

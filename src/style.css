@@ -133,15 +133,8 @@ body {
 	fill: #fff;
 	stroke: #000;
 }
-.print-friendly dip-switch .switch .switch-thumb {
-	y: calc(100% - 8.5cqw + var(--thumb-stroke) / 2);
-	transform: none;
+.print-friendly dip-switch .switch-thumb {
 	transition: none;
-}
-.print-friendly dip-switch .switch:has(.input:checked) .switch-thumb {
-	y: calc(1.5cqw + var(--thumb-stroke) / 2);
-	fill: #efefef;
-	transform: none;
 }
 
 @keyframes spin {
