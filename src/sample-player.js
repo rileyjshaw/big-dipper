@@ -1,3 +1,5 @@
+import { decodeRotation, extractRowSettings } from './sequencer-settings.js';
+
 /**
  * Sample player for step sequencer
  * Loads audio samples and plays them when steps are active
@@ -126,26 +128,7 @@ export class SamplePlayer {
 	 * @returns {Object} {solo, mute, midiChannel, note, mode, modeSettings}
 	 */
 	extractRowSettings(settings) {
-		const firstByte = (settings >> 8) & 0xff;
-
-		const solo = !!((firstByte >> 7) & 0b1);
-		const mute = !!((firstByte >> 6) & 0b1);
-		const midiChannel = (firstByte >> 3) & 0b111;
-		const note = (firstByte >> 0) & 0b111;
-
-		const secondByte = settings & 0xff;
-
-		const mode = (secondByte >> 0) & 0b1; // TODO: Once more modes are added, & 0b111 instead.
-		const modeSettings = (secondByte >> 3) & 0b11111;
-
-		return {
-			solo,
-			mute,
-			midiChannel,
-			note,
-			mode,
-			modeSettings,
-		};
+		return extractRowSettings(settings);
 	}
 
 	/**
@@ -179,9 +162,9 @@ export class SamplePlayer {
 		const pulsesPerCycleRaw = (notes >> 16) & 0xff;
 		const pulsesPerCycle = Math.max(0, Math.min(stepsPerCycle, pulsesPerCycleRaw));
 		const initialRotationRaw = (notes >> 8) & 0xff;
-		const initialRotation = initialRotationRaw > 127 ? 128 - initialRotationRaw : initialRotationRaw;
+		const initialRotation = decodeRotation(initialRotationRaw);
 		const rotationIncrementRaw = notes & 0xff;
-		const rotationIncrement = rotationIncrementRaw > 127 ? 128 - rotationIncrementRaw : rotationIncrementRaw;
+		const rotationIncrement = decodeRotation(rotationIncrementRaw);
 
 		const cached = this.euclideanCache.get(index);
 		if (

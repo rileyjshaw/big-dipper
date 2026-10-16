@@ -1,0 +1,97 @@
+.switch-tooltip {
+	position: fixed;
+	z-index: 1000;
+	width: max-content;
+	max-width: min(19rem, calc(100vw - 16px));
+	padding: 0.65rem 0.8rem;
+	border: 1px solid #626262;
+	border-radius: 6px;
+	background: #181818;
+	color: #f5f5f5;
+	box-shadow: 0 3px 12px #0004;
+	font:
+		13px/1.45 system-ui,
+		sans-serif;
+	overflow-wrap: anywhere;
+}
+
+.switch-tooltip strong,
+.switch-tooltip span {
+	display: block;
+}
+
+.switch-tooltip strong {
+	font-weight: 600;
+}
+
+.switch-tooltip span {
+	margin-top: 0.3em;
+	color: #ccc;
+}
+
+/* A hoverable bridge keeps the label open while the pointer crosses the gap. */
+.switch-tooltip::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 9px;
+}
+
+.switch-tooltip[data-side='above']::after {
+	top: 100%;
+}
+
+.switch-tooltip[data-side='below']::after {
+	bottom: 100%;
+}
+
+dip-switch .bit {
+	position: relative;
+	align-self: stretch;
+	text-align: center;
+}
+
+dip-switch .labeled-switch .bit::after {
+	content: '';
+	position: absolute;
+	left: -10%;
+	right: -10%;
+	bottom: 0;
+	border-bottom: 1px solid currentColor;
+}
+
+dip-switch .label-start .bit::after {
+	left: 0;
+}
+
+dip-switch .label-end .bit::after {
+	right: 0;
+}
+
+#labels-button:has([aria-pressed='false']) .tact-label {
+	opacity: 0.55;
+}
+
+.print-friendly .switch-tooltip,
+.print-friendly dip-switch .bit::after {
+	display: none;
+}
+
+@media (forced-colors: active) {
+	.switch-tooltip {
+		background: Canvas;
+		color: CanvasText;
+		border-color: CanvasText;
+	}
+
+	.switch-tooltip span {
+		color: CanvasText;
+	}
+}
+
+@media print {
+	.switch-tooltip {
+		display: none;
+	}
+}

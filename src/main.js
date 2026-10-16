@@ -1,6 +1,8 @@
 import './dip-switch.js';
 import './dip-switch-group.js';
 import './tactile-button.js';
+import { SOUND_BANKS } from './sequencer-settings.js';
+import { initializeSwitchLabels } from './switch-labels.js';
 import { SequencerClock } from './sequencer-clock.js';
 import { SamplePlayer } from './sample-player.js';
 import { CrossTabSync } from './cross-tab-sync.js';
@@ -579,6 +581,7 @@ const getAllRowValues = () => {
 };
 
 initializePresetSystem(getAllRowGroups, setRow, updateRowValuesCache);
+initializeSwitchLabels(getAllRowGroups());
 
 const extractVolumeSettings = () => {
 	const setRowValue = setRow.value;
@@ -770,24 +773,13 @@ const preloadSamples = async () => {
 	const loadingOverlay = document.getElementById('loading-overlay');
 	if (!loadingOverlay) return;
 
-	const soundBanks = [
-		'drum - koan remnants',
-		'drum - mp pt 4',
-		'drum - alix perez x eprom',
-		'note - noire felt',
-		'note - kontakt jazz guitar',
-		'note - scarbee 1 on the road',
-		'note - hypha spring time',
-		'note - kontakt castles burning',
-	];
-
 	try {
 		const baseUrl = import.meta.env.BASE_URL;
 		const preloadedData = new Map();
 		const loadPromises = [];
 
-		for (let soundBank = 0; soundBank < soundBanks.length; soundBank++) {
-			const bankDir = soundBanks[soundBank];
+		for (let soundBank = 0; soundBank < SOUND_BANKS.length; soundBank++) {
+			const bankDir = SOUND_BANKS[soundBank];
 			for (let note = 0; note < 8; note++) {
 				const fileNum = String(note + 1).padStart(2, '0');
 				const url = `${baseUrl}samples/${bankDir}/${fileNum}.wav`;

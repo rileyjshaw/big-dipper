@@ -1,3 +1,5 @@
+import { extractScaleSettings } from './sequencer-settings.js';
+
 const SCALE_OFFSETS = [
 	[0, 1, 2, 3, 4, 5, 6, 7], // Chromatic
 	[0, 2, 4, 5, 7, 9, 11, 12], // Major
@@ -85,12 +87,7 @@ export class MidiOutput {
 	 * @returns {{noteOffset: number, scaleIndex: number}}
 	 */
 	extractScaleSettings(settingsRowNotes) {
-		const scaleByte = (settingsRowNotes >> 16) & 0xff;
-
-		const noteOffset = (scaleByte >> 2) & 0b111111;
-		const scaleIndex = (scaleByte >> 0) & 0b11; // 0-3
-
-		return { noteOffset, scaleIndex };
+		return extractScaleSettings(settingsRowNotes);
 	}
 
 	/**

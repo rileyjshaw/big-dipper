@@ -22,6 +22,11 @@ You can control Big Dipper with your mouse and/or keyboard.
 | **r**                   | Random value for selected byte                                                                          |
 | **t**                   | Invert bits of selected byte                                                                            |
 | **1**–**8**             | Toggle bit 1–8 of selected byte                                                                         |
+| **?**                   | Show/hide switch labels (also available through the **?** button)                                       |
+
+Hover or focus a switch to see its function and current value. The line below the numbers marks all switches that control that value. Labels follow the selected mode and settings; **Escape** dismisses the current tooltip. Your show/hide preference is remembered in this browser. Switch names and descriptions remain available to screen readers when visual labels are hidden.
+
+See [the switch reference](docs/switches.md) for the complete bit mapping.
 
 ## About
 

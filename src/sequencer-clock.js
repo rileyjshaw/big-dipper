@@ -1,3 +1,5 @@
+import { extractTempoSettings } from './sequencer-settings.js';
+
 /**
  * High-precision sequencer clock with lookahead scheduling
  *
@@ -58,15 +60,7 @@ export class SequencerClock {
 	 * @returns {{baseTempo: number, isMultiply: boolean, tempoFactorExponent: number}}
 	 */
 	extractTempoSettings(settings) {
-		const baseTempo = (settings >> 8) & 0xff;
-
-		const secondByte = settings & 0xff;
-
-		const isMultiply = ((secondByte >> 7) & 0b1) === 1;
-
-		const tempoFactorExponent = (secondByte >> 5) & 0b11;
-
-		return { baseTempo, isMultiply, tempoFactorExponent };
+		return extractTempoSettings(settings);
 	}
 
 	/**
